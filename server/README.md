@@ -147,7 +147,7 @@ Environment only; see `.env.example`.
 |---|---|---|---|
 | `DATABASE_URL` | yes | — | pgx DSN |
 | `PUBLIC_BASE_URL` | yes | — | origin used to build returned URLs; trailing slash trimmed |
-| `LISTEN_ADDR` | no | `:8080` | bind address |
+| `LISTEN_ADDR` | no | `:$PORT` or `:8080` | bind address; falls back to the `PORT` env var (Railway) |
 | `LEMONSQUEEZY_SECRET` | no | empty | empty makes the webhook answer 503 |
 | `LOG_LEVEL` | no | `info` | debug, info, warn, error |
 | `LOG_FORMAT` | no | `json` | json or text |

@@ -50,7 +50,12 @@ func load(get func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("config: PUBLIC_BASE_URL is required")
 	}
 	if cfg.ListenAddr == "" {
-		cfg.ListenAddr = ":8080"
+		// Railway and similar hosts inject PORT instead of a full address.
+		if port := strings.TrimSpace(get("PORT")); port != "" {
+			cfg.ListenAddr = ":" + port
+		} else {
+			cfg.ListenAddr = ":8080"
+		}
 	}
 	if cfg.LogFormat == "" {
 		cfg.LogFormat = "json"

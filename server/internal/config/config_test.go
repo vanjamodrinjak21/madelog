@@ -72,3 +72,19 @@ func TestLoadRejectsBadLogSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadUsesPortWhenListenAddrUnset(t *testing.T) {
+	env := map[string]string{"DATABASE_URL": "postgres://x", "PUBLIC_BASE_URL": "https://p.example", "PORT": "9090"}
+	cfg, err := load(func(k string) string { return env[k] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ListenAddr != ":9090" {
+		t.Fatalf("ListenAddr = %q, want :9090", cfg.ListenAddr)
+	}
+	env["LISTEN_ADDR"] = ":7070"
+	cfg, _ = load(func(k string) string { return env[k] })
+	if cfg.ListenAddr != ":7070" {
+		t.Fatalf("LISTEN_ADDR must win over PORT, got %q", cfg.ListenAddr)
+	}
+}
