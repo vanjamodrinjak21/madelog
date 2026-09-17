@@ -1,0 +1,122 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            binary: pop
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            binary: pop
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            binary: pop
+          # Native arm64 Linux runner: free for public repositories, a paid label otherwise.
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            binary: pop
+          # msvc is the host target of the Windows runner, so no extra toolchain is needed.
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            binary: pop.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the version
+        shell: bash
+        run: echo "POP_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      # git2 links against OpenSSL on Linux; the Apple and Windows builds use the system stacks.
+      - name: Install build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y pkg-config libssl-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+          key: ${{ matrix.target }}
+
+      - name: Build
+        working-directory: cli
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="pop-${POP_VERSION}-${{ matrix.target }}"
+          cp "cli/target/${{ matrix.target }}/release/${{ matrix.binary }}" "${{ matrix.binary }}"
+          chmod +x "${{ matrix.binary }}"
+          zip -j "${name}.zip" "${{ matrix.binary }}" LICENSE
+          echo "POP_ASSET=${name}.zip" >> "$GITHUB_ENV"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $name = "pop-$env:POP_VERSION-${{ matrix.target }}"
+          Copy-Item "cli/target/${{ matrix.target }}/release/${{ matrix.binary }}" "${{ matrix.binary }}"
+          Compress-Archive -Path "${{ matrix.binary }}", "LICENSE" -DestinationPath "$name.zip"
+          Add-Content -Path $env:GITHUB_ENV -Value "POP_ASSET=$name.zip"
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: pop-${{ matrix.target }}
+          path: ${{ env.POP_ASSET }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Collect the archives
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: pop-*
+          merge-multiple: true
+
+      - name: Write SHA256SUMS
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          sha256sum *.zip | tee SHA256SUMS
+
+      - name: Create the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/*.zip
+            dist/SHA256SUMS

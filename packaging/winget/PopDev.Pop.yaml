@@ -1,0 +1,17 @@
+# Template. Copy the three PopDev.Pop*.yaml files in this directory into
+# microsoft/winget-pkgs under manifests/p/PopDev/Pop/<version>/ and replace the placeholders:
+#
+#   __VERSION__        the tag without the leading v, for example 1.2.3
+#   __RELEASE_DATE__   the release date, YYYY-MM-DD
+#   __SHA256_...__     the checksum from the release SHA256SUMS, upper case hex
+#
+# Validate before opening the pull request:
+#   winget validate --manifest manifests/p/PopDev/Pop/<version>
+#   winget install --manifest manifests/p/PopDev/Pop/<version>
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
+
+PackageIdentifier: PopDev.Pop
+PackageVersion: __VERSION__
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0

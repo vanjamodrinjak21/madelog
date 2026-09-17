@@ -1,0 +1,24 @@
+# Template. See PopDev.Pop.yaml for the placeholders and the validation steps.
+#
+# The release ZIP holds the portable binary and LICENSE at its root, so winget installs it as a
+# nested portable package and puts `pop` on PATH through its links directory.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+
+PackageIdentifier: PopDev.Pop
+PackageVersion: __VERSION__
+MinimumOSVersion: 10.0.17763.0
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: pop.exe
+    PortableCommandAlias: pop
+UpgradeBehavior: install
+Commands:
+  - pop
+ReleaseDate: __RELEASE_DATE__
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/vanjamodrinjak/pop/releases/download/v__VERSION__/pop-__VERSION__-x86_64-pc-windows-msvc.zip
+    InstallerSha256: __SHA256_X86_64_PC_WINDOWS_MSVC__
+ManifestType: installer
+ManifestVersion: 1.6.0
