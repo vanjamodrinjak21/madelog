@@ -1,0 +1,16 @@
+# Rust
+/cli/target/
+/target/
+# Go
+/server/bin/
+# Node
+node_modules/
+# Local pop data (dogfooding this repo)
+.pop/
+# Env / secrets
+.env
+.env.*
+# macOS
+.DS_Store
+# Session memory
+.remember/

@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pop.dev/schema/event.schema.json",
+  "title": "pop event",
+  "description": "One recorded event in a pop project log. Every event enters the hash chain: hash = sha256(prev_hash + \"\\n\" + ts + \"\\n\" + kind + \"\\n\" + canonical_json(payload)), canonical JSON has sorted keys and no whitespace.",
+  "type": "object",
+  "required": ["id", "ts", "kind", "payload", "prev_hash", "hash"],
+  "additionalProperties": false,
+  "properties": {
+    "seq": { "type": "integer", "minimum": 1 },
+    "id": { "type": "string", "format": "uuid" },
+    "ts": { "type": "string", "format": "date-time" },
+    "kind": { "enum": ["intent", "commit", "ai_session", "decision", "pattern", "summary", "hide"] },
+    "commit_sha": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
+    "prev_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "payload": {
+      "oneOf": [
+        { "$ref": "#/$defs/intent" },
+        { "$ref": "#/$defs/commit" },
+        { "$ref": "#/$defs/ai_session" },
+        { "$ref": "#/$defs/decision" },
+        { "$ref": "#/$defs/pattern" },
+        { "$ref": "#/$defs/summary" },
+        { "$ref": "#/$defs/hide" }
+      ]
+    }
+  },
+  "$defs": {
+    "intent": {
+      "type": "object",
+      "required": ["what", "for_whom", "tools", "record_ai_sessions"],
+      "additionalProperties": false,
+      "properties": {
+        "what": { "type": "string" },
+        "for_whom": { "type": "string" },
+        "tools": { "type": "array", "items": { "type": "string" } },
+        "record_ai_sessions": { "type": "boolean" }
+      }
+    },
+    "commit": {
+      "type": "object",
+      "required": ["sha", "message", "author", "parents", "files", "secs_since_prev"],
+      "additionalProperties": false,
+      "properties": {
+        "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "message": { "type": "string" },
+        "author": { "type": "string" },
+        "parents": { "type": "array", "items": { "type": "string", "pattern": "^[0-9a-f]{40}$" } },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "added", "removed", "status"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "added": { "type": "integer", "minimum": 0 },
+              "removed": { "type": "integer", "minimum": 0 },
+              "status": { "enum": ["added", "modified", "deleted", "renamed"] },
+              "diff_excerpt": { "type": "string", "description": "at most 20 lines; absent for binary, ignored, or redacted files" }
+            }
+          }
+        },
+        "secs_since_prev": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "ai_session": {
+      "type": "object",
+      "required": ["tool", "session_id", "files", "accepted"],
+      "additionalProperties": false,
+      "properties": {
+        "tool": { "type": "string", "description": "claude-code | cursor | codex | copilot | windsurf | other" },
+        "model": { "type": ["string", "null"] },
+        "session_id": { "type": "string" },
+        "prompt": { "type": ["string", "null"], "description": "null when redacted or not available" },
+        "response_excerpt": { "type": ["string", "null"] },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "ai_lines", "ai_lines_modified_by_human"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "ai_lines": { "type": "integer", "minimum": 0 },
+              "ai_lines_modified_by_human": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "accepted": { "type": "boolean" }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": ["text", "private"],
+      "additionalProperties": false,
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "private": { "type": "boolean" }
+      }
+    },
+    "pattern": {
+      "type": "object",
+      "required": ["pattern", "commits", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "pattern": { "enum": ["revert", "retry", "fix_after_ai", "stall"] },
+        "commits": { "type": "array", "items": { "type": "string", "pattern": "^[0-9a-f]{40}$" } },
+        "detail": { "type": "string" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["week_start", "week_end", "text", "generated_by", "edited"],
+      "additionalProperties": false,
+      "properties": {
+        "week_start": { "type": "string", "format": "date" },
+        "week_end": { "type": "string", "format": "date" },
+        "text": { "type": "string" },
+        "generated_by": { "type": "string", "pattern": "^(ollama:.+|remote:.+|heuristic|user)$" },
+        "edited": { "type": "boolean" }
+      }
+    },
+    "hide": {
+      "type": "object",
+      "required": ["target_kind", "target_id"],
+      "additionalProperties": false,
+      "properties": {
+        "target_kind": { "enum": ["ai_session"] },
+        "target_id": { "type": "string", "format": "uuid" }
+      }
+    }
+  }
+}
