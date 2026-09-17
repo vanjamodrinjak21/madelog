@@ -1,0 +1,47 @@
+cli/src/gitai.rs
+  s_9f1c22ab445566::t_11aa22bb33cc44 1-40,55-60
+  h_ea2010baa7a42b 41-54
+docs/spec.md
+  s_9f1c22ab445566::t_77dd88ee99ff00 1-12
+  4f3a9b1 20-29
+README.md
+  4f3a9b1 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "0670e7efb1c5f8d3a94c2e1f6b7d80a5c3e9d412",
+  "prompts": {
+    "4f3a9b1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "cur-7781",
+        "model": "gpt-5-codex"
+      },
+      "human_author": "h_ea2010baa7a42b",
+      "messages_url": null,
+      "total_additions": 15,
+      "total_deletions": 2,
+      "accepted_lines": 10,
+      "overriden_lines": 5
+    }
+  },
+  "humans": {
+    "h_ea2010baa7a42b": {
+      "author": "Test Person <test@example.com>"
+    }
+  },
+  "sessions": {
+    "s_9f1c22ab445566": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "cop-991",
+        "model": null
+      },
+      "human_author": null,
+      "custom_attributes": {
+        "ide": "vscode"
+      }
+    }
+  }
+}

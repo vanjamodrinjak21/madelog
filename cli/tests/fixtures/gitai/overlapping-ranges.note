@@ -1,0 +1,34 @@
+src/lib.rs
+  s_1111111111aaaa::t_0000000000000a 1-10
+  s_2222222222bbbb::t_0000000000000b 5-8
+  h_3333333333cccc 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "4444444444444444444444444444444444444444",
+  "prompts": {},
+  "humans": {
+    "h_3333333333cccc": {
+      "author": "Test Person <test@example.com>"
+    }
+  },
+  "sessions": {
+    "s_1111111111aaaa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11111111-2222-3333-4444-555555555555",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    },
+    "s_2222222222bbbb": {
+      "agent_id": {
+        "tool": "amp",
+        "id": "amp-777",
+        "model": "amp-1"
+      },
+      "human_author": null
+    }
+  }
+}

@@ -1,0 +1,22 @@
+"docs/design notes.md"
+  s_aaa111bbb222cc::t_deadbeefcafe01 1-3
+plain/file.txt
+  s_aaa111bbb222cc::t_deadbeefcafe01 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": null,
+  "base_commit_sha": "1111111111111111111111111111111111111111",
+  "prompts": {},
+  "humans": {},
+  "sessions": {
+    "s_aaa111bbb222cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01J9ZZTESTSESSIONCODEX",
+        "model": "gpt-5"
+      },
+      "human_author": null
+    }
+  }
+}
