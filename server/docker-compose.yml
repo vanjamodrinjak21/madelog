@@ -1,0 +1,38 @@
+# Local development: Postgres plus the server.
+#
+#   make db-up     just the database, for `make run` and the DB tests
+#   make up        database and server together
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: pop
+      POSTGRES_PASSWORD: pop
+      POSTGRES_DB: pop
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pop -d pop"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  server:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://pop:pop@db:5432/pop?sslmode=disable
+      LISTEN_ADDR: ":8080"
+      PUBLIC_BASE_URL: http://localhost:8080
+      # Leave empty locally: the billing webhook then answers 503.
+      LEMONSQUEEZY_SECRET: ""
+      LOG_FORMAT: text
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
