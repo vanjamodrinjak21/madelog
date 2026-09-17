@@ -396,12 +396,7 @@ fn escape_string(s: &str) -> String {
 
 /// `sha256(prev_hash + "\n" + ts + "\n" + kind + "\n" + canonical_json(payload))`,
 /// hex, lowercase.
-pub fn hash_for(
-    prev_hash: &str,
-    ts: &str,
-    kind: EventKind,
-    payload: &serde_json::Value,
-) -> String {
+pub fn hash_for(prev_hash: &str, ts: &str, kind: EventKind, payload: &serde_json::Value) -> String {
     let mut hasher = Sha256::new();
     hasher.update(prev_hash.as_bytes());
     hasher.update(b"\n");

@@ -18,7 +18,10 @@ pub fn run(ctx: &mut Ctx<'_>, command: ConfigCommand) -> Result<()> {
         ConfigCommand::Set { key, value } => {
             config.set(&key, &value)?;
             config.save(&path)?;
-            ctx.say(&format!("{key} = {}", config.get(&key)?.replace('\n', ", ")))?;
+            ctx.say(&format!(
+                "{key} = {}",
+                config.get(&key)?.replace('\n', ", ")
+            ))?;
         }
         ConfigCommand::List => {
             for key in KEYS {

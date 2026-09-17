@@ -22,7 +22,11 @@ fn main() {
             eprint!(
                 "{}{}",
                 exit.message,
-                if exit.message.ends_with('\n') { "" } else { "\n" }
+                if exit.message.ends_with('\n') {
+                    ""
+                } else {
+                    "\n"
+                }
             );
             std::process::exit(exit.code);
         }

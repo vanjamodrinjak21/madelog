@@ -84,8 +84,8 @@ impl Config {
         if !path.exists() {
             return Ok(Config::default());
         }
-        let raw = std::fs::read_to_string(path)
-            .with_context(|| format!("reading {}", path.display()))?;
+        let raw =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         toml::from_str(&raw).with_context(|| format!("parsing {}", path.display()))
     }
 
@@ -155,7 +155,10 @@ fn optional(value: &str) -> Option<String> {
 }
 
 fn unknown_key(key: &str) -> anyhow::Error {
-    anyhow!("unknown config key `{key}`. Known keys: {}", KEYS.join(", "))
+    anyhow!(
+        "unknown config key `{key}`. Known keys: {}",
+        KEYS.join(", ")
+    )
 }
 
 fn parse_bool(value: &str) -> Result<bool> {

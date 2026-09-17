@@ -91,7 +91,7 @@ pub fn init_repo() -> TestRepo {
 /// A repo that already has `pop init` run against it, non-interactively.
 pub fn init_pop(repo: &TestRepo) {
     isolate_device_key();
-    pop::run_in(
+    pop::run_capture(
         repo.root(),
         &[
             "init",

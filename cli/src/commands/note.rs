@@ -25,7 +25,11 @@ pub fn run(ctx: &mut Ctx<'_>, text: &str, private: bool) -> Result<()> {
         Some(sha) => format!(" at {}", &sha[..7.min(sha.len())]),
         None => String::new(),
     };
-    let visibility = if private { " (private, never published)" } else { "" };
+    let visibility = if private {
+        " (private, never published)"
+    } else {
+        ""
+    };
     ctx.say(&format!("noted{anchor}{visibility}"))?;
     Ok(())
 }

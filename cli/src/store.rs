@@ -45,8 +45,7 @@ impl Store {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("creating {}", parent.display()))?;
         }
-        let conn = Connection::open(path)
-            .with_context(|| format!("opening {}", path.display()))?;
+        let conn = Connection::open(path).with_context(|| format!("opening {}", path.display()))?;
         conn.pragma_update(None, "journal_mode", "WAL").ok();
         conn.pragma_update(None, "foreign_keys", "ON").ok();
         conn.execute_batch(SCHEMA)
@@ -135,8 +134,7 @@ impl Store {
     }
 
     pub fn last_of_kind(&self, kind: EventKind) -> Result<Option<Event>> {
-        let sql =
-            format!("SELECT {COLUMNS} FROM events WHERE kind = ?1 ORDER BY seq DESC LIMIT 1");
+        let sql = format!("SELECT {COLUMNS} FROM events WHERE kind = ?1 ORDER BY seq DESC LIMIT 1");
         let found = self
             .conn
             .query_row(&sql, [kind.as_str()], row_to_event)
@@ -244,7 +242,9 @@ mod tests {
     fn append_links_events_into_a_chain() {
         let (_d, store) = temp_store();
         let a = store.append_payload(None, &decision("one")).unwrap();
-        let b = store.append_payload(Some(&"a".repeat(40)), &decision("two")).unwrap();
+        let b = store
+            .append_payload(Some(&"a".repeat(40)), &decision("two"))
+            .unwrap();
 
         assert_eq!(a.seq, 1);
         assert_eq!(b.seq, 2);

@@ -28,6 +28,15 @@ pub struct DeviceKey {
     signing: SigningKey,
 }
 
+/// Never print the secret, not even by accident in a panic message.
+impl std::fmt::Debug for DeviceKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeviceKey")
+            .field("public_key", &self.public_key_hex())
+            .finish_non_exhaustive()
+    }
+}
+
 impl DeviceKey {
     /// Load the device key, creating it on first use.
     pub fn load_or_create() -> Result<DeviceKey> {

@@ -9,7 +9,11 @@ use crate::Ctx;
 
 /// The tools pop cooperates with, and where to get them.
 const TOOLS: &[(&str, &str, &str)] = &[
-    ("git", "pop records your commits.", "https://git-scm.com/downloads"),
+    (
+        "git",
+        "pop records your commits.",
+        "https://git-scm.com/downloads",
+    ),
     (
         "git-ai",
         "Without it, AI sessions stay empty.",

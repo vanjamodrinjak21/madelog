@@ -54,7 +54,9 @@ fn hash_for_matches_the_published_test_vector() {
         "acca5e4cbe2f6322f3db2ba4418cbcda1c923a02b8904acf9c6545afce20806e"
     );
     assert_eq!(hash.len(), 64);
-    assert!(hash.chars().all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()));
+    assert!(hash
+        .chars()
+        .all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()));
 }
 
 #[test]
@@ -78,10 +80,30 @@ fn every_event_kind_serialises_to_its_schema_name() {
 #[test]
 fn a_change_anywhere_in_the_input_changes_the_hash() {
     let payload = serde_json::json!({"private": false, "text": "a"});
-    let base = hash_for(GENESIS_PREV_HASH, "2026-09-17T09:00:00Z", EventKind::Decision, &payload);
-    let other_ts = hash_for(GENESIS_PREV_HASH, "2026-09-17T09:00:01Z", EventKind::Decision, &payload);
-    let other_kind = hash_for(GENESIS_PREV_HASH, "2026-09-17T09:00:00Z", EventKind::Summary, &payload);
-    let other_prev = hash_for(&"1".repeat(64), "2026-09-17T09:00:00Z", EventKind::Decision, &payload);
+    let base = hash_for(
+        GENESIS_PREV_HASH,
+        "2026-09-17T09:00:00Z",
+        EventKind::Decision,
+        &payload,
+    );
+    let other_ts = hash_for(
+        GENESIS_PREV_HASH,
+        "2026-09-17T09:00:01Z",
+        EventKind::Decision,
+        &payload,
+    );
+    let other_kind = hash_for(
+        GENESIS_PREV_HASH,
+        "2026-09-17T09:00:00Z",
+        EventKind::Summary,
+        &payload,
+    );
+    let other_prev = hash_for(
+        &"1".repeat(64),
+        "2026-09-17T09:00:00Z",
+        EventKind::Decision,
+        &payload,
+    );
     let other_payload = hash_for(
         GENESIS_PREV_HASH,
         "2026-09-17T09:00:00Z",

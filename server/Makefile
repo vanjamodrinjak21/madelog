@@ -11,11 +11,12 @@ DB_DSN  ?= postgres://pop:pop@localhost:5432/pop?sslmode=disable
 
 .PHONY: run test test-db sqlc lint fmt build tidy db-up db-down up down clean help
 
-## run: start the server locally
+## run: start the server locally, reading .env when it exists
 run:
-	DATABASE_URL="$(DATABASE_URL)" \
-	PUBLIC_BASE_URL="$${PUBLIC_BASE_URL:-http://localhost:8080}" \
-	LOG_FORMAT="$${LOG_FORMAT:-text}" \
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	export DATABASE_URL="$${DATABASE_URL:-$(DB_DSN)}"; \
+	export PUBLIC_BASE_URL="$${PUBLIC_BASE_URL:-http://localhost:8080}"; \
+	export LOG_FORMAT="$${LOG_FORMAT:-text}"; \
 	$(GO) run ./cmd/popserver
 
 ## test: unit and handler tests; database tests skip without DATABASE_URL

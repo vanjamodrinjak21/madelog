@@ -101,9 +101,17 @@ fn hook_omits_excerpts_for_ignored_and_redacted_paths() {
     pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
 
     let c = commit_payloads(&repo).pop().unwrap();
-    let by = |p: &str| c.files.iter().find(|f| f.path == p).unwrap_or_else(|| panic!("{p} missing from {:?}", c.files));
+    let by = |p: &str| {
+        c.files
+            .iter()
+            .find(|f| f.path == p)
+            .unwrap_or_else(|| panic!("{p} missing from {:?}", c.files))
+    };
 
-    assert!(by("src/ok.rs").diff_excerpt.is_some(), "normal file keeps its excerpt");
+    assert!(
+        by("src/ok.rs").diff_excerpt.is_some(),
+        "normal file keeps its excerpt"
+    );
     assert!(
         by("src/secret.rs").diff_excerpt.is_none(),
         "redacted path has no excerpt"

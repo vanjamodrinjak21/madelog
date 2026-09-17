@@ -78,8 +78,7 @@ pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
         None => ctx.ask_yes_no("Record AI sessions from Git AI?", true)?,
     };
 
-    std::fs::create_dir_all(&pop_dir)
-        .with_context(|| format!("creating {}", pop_dir.display()))?;
+    std::fs::create_dir_all(&pop_dir).with_context(|| format!("creating {}", pop_dir.display()))?;
 
     write_intent_md(&pop_dir, &what, &for_whom, &tools, record_ai_sessions)?;
 

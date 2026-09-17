@@ -137,12 +137,7 @@ pub fn run_capture(root: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&out).into_owned())
 }
 
-fn run_ctx(
-    root: &Path,
-    args: &[&str],
-    input: &mut dyn BufRead,
-    out: &mut dyn Write,
-) -> Result<()> {
+fn run_ctx(root: &Path, args: &[&str], input: &mut dyn BufRead, out: &mut dyn Write) -> Result<()> {
     let parsed = cli::parse(args)?;
     let mut ctx = Ctx {
         cwd: root.to_path_buf(),

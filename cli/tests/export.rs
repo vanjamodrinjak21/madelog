@@ -20,7 +20,7 @@ fn export_writes_valid_json_with_intent_config_and_events() {
     assert_eq!(v["intent"]["what"], "a small cli that records process");
     assert_eq!(v["intent"]["for_whom"], "a studio hiring juniors");
     assert_eq!(v["config"]["llm"]["provider"], "auto");
-    assert_eq!(v["config"]["project"]["name"].as_str().is_some(), true);
+    assert!(v["config"]["project"]["name"].as_str().is_some());
 
     let events = v["events"].as_array().expect("events array");
     assert_eq!(events.len(), 3);

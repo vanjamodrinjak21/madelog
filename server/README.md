@@ -117,6 +117,17 @@ Errors are JSON: `{"error": "<code>", "message": "<human readable>"}`.
   whole `roots` history survive. `/p/{slug}` and `/v1/verify/{slug}` then answer
   `404`. Deleting twice is fine. Re-publishing the slug brings the page back.
 
+- **Unknown fields are rejected.** A JSON body with a field the endpoint does
+  not know is a `400`, so a typo like `publishedTs` fails loudly instead of
+  being silently ignored and then failing signature verification.
+
+### Serving user html
+
+`/p/{slug}` returns exactly the bytes the client published, with
+`X-Content-Type-Options: nosniff`. The server sets no cookies and has no session
+of any kind, so a published page has nothing on this origin to steal. Pages are
+deliberately framable: the landing page embeds a real one in an `<iframe>`.
+
 ### Status codes for `POST /v1/pages`
 
 | code | when |

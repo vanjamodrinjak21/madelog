@@ -25,8 +25,6 @@ pub fn run(ctx: &mut Ctx<'_>, event_id: &str) -> Result<()> {
             target_id: target.id.clone(),
         }),
     )?;
-    ctx.say(&format!(
-        "hidden. The session stays in the chain; the page will say one session is hidden."
-    ))?;
+    ctx.say("hidden. The session stays in the chain; the page will say one session is hidden.")?;
     Ok(())
 }

@@ -9,7 +9,10 @@ fn init_creates_files_and_intent_event() {
     init_pop(&repo);
 
     assert!(repo.path(".pop/intent.md").is_file(), "intent.md written");
-    assert!(repo.path(".pop/config.toml").is_file(), "config.toml written");
+    assert!(
+        repo.path(".pop/config.toml").is_file(),
+        "config.toml written"
+    );
     assert!(repo.path(".pop/log.db").is_file(), "log.db created");
     assert!(
         repo.path(".git/hooks/post-commit").is_file(),

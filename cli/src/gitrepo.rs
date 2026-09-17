@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn discover_fails_outside_a_repository() {
         let dir = tempfile::TempDir::new().unwrap();
-        let err = Repo::discover(dir.path()).unwrap_err();
+        let err = Repo::discover(dir.path()).map(|_| ()).unwrap_err();
         assert!(format!("{err:#}").contains("git repository"), "{err:#}");
     }
 }

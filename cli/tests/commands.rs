@@ -27,7 +27,11 @@ fn config_get_and_set_round_trip() {
         &["config", "set", "privacy.redact", "^secret/, \\.env$"],
     )
     .unwrap();
-    pop::run_in(repo.root(), &["config", "set", "project.delivered_url", "https://a.test"]).unwrap();
+    pop::run_in(
+        repo.root(),
+        &["config", "set", "project.delivered_url", "https://a.test"],
+    )
+    .unwrap();
 
     assert_eq!(
         pop::run_capture(repo.root(), &["config", "get", "llm.model"])
@@ -131,7 +135,10 @@ fn deferred_commands_exit_with_code_two() {
 
     for (args, needle) in [
         (vec!["model", "pull"], "not available in this version"),
-        (vec!["ask", "what", "happened"], "not available in this version"),
+        (
+            vec!["ask", "what", "happened"],
+            "not available in this version",
+        ),
         (vec!["publish"], "not implemented yet"),
         (vec!["analyze"], "not implemented yet"),
         (vec!["summarize"], "not implemented yet"),

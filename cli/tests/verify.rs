@@ -36,7 +36,8 @@ fn verify_fails_after_a_payload_is_tampered_with_in_sqlite() {
     // Someone edits the database behind pop's back. The table is append-only,
     // so they have to remove the guard first.
     let conn = rusqlite::Connection::open(repo.path(".pop/log.db")).unwrap();
-    conn.execute_batch("DROP TRIGGER events_no_update;").unwrap();
+    conn.execute_batch("DROP TRIGGER events_no_update;")
+        .unwrap();
     conn.execute(
         "UPDATE events SET payload = ?1 WHERE seq = 3",
         rusqlite::params![r#"{"private":false,"text":"a flattering lie"}"#],
@@ -59,7 +60,9 @@ fn the_events_table_rejects_updates_and_deletes() {
     assert!(conn
         .execute("UPDATE events SET kind = 'commit' WHERE seq = 1", [])
         .is_err());
-    assert!(conn.execute("DELETE FROM events WHERE seq = 1", []).is_err());
+    assert!(conn
+        .execute("DELETE FROM events WHERE seq = 1", [])
+        .is_err());
 }
 
 #[test]
