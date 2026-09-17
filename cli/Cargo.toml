@@ -1,0 +1,40 @@
+[package]
+name = "pop"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Record how your project came together, and prove it."
+license = "MIT"
+repository = "https://github.com/pop-cli/pop"
+
+# This crate is standalone; the repository root is not a cargo workspace.
+[workspace]
+
+[lib]
+name = "pop"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pop"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+dirs = "5"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+git2 = "0.19"
+hex = "0.4"
+rand = "0.8"
+regex = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "1"
+toml = "0.8"
+uuid = { version = "1", features = ["v7", "serde"] }
+
+[dev-dependencies]
+tempfile = "3"
