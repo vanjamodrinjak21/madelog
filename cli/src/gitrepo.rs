@@ -149,7 +149,7 @@ impl Repo {
             _ => FileStatus::Modified,
         };
 
-        let patch = Patch::from_diff(diff, idx).ok().flatten();
+        let mut patch = Patch::from_diff(diff, idx).ok().flatten();
         let (added, removed) = match &patch {
             Some(p) => {
                 let (_context, adds, dels) = p.line_stats().unwrap_or((0, 0, 0));
@@ -162,7 +162,7 @@ impl Repo {
         let excerpt = if binary || !filter.allows(&path) || self.is_ignored(&path) {
             None
         } else {
-            patch.as_ref().and_then(|p| excerpt_from_patch(p))
+            patch.as_mut().and_then(excerpt_from_patch)
         };
 
         Ok(Some(CommitFile {
@@ -223,7 +223,7 @@ impl ExcerptFilter {
 
 /// The first [`MAX_DIFF_EXCERPT_LINES`] lines of the patch, starting at the
 /// first hunk header. Headers with blob ids and modes are not interesting.
-fn excerpt_from_patch(patch: &Patch<'_>) -> Option<String> {
+fn excerpt_from_patch(patch: &mut Patch<'_>) -> Option<String> {
     let buf = patch.to_buf().ok()?;
     let text = buf.as_str()?;
     let mut lines = Vec::new();

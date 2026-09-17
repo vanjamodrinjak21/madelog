@@ -194,14 +194,21 @@ pub fn dispatch(cli: Cli, ctx: &mut Ctx<'_>) -> Result<()> {
         Command::Export(args) => commands::export::run(ctx, args.path.as_deref()),
         Command::Hide(args) => commands::hide::run(ctx, &args.event_id),
         Command::Config(args) => commands::config::run(ctx, args.command),
-        Command::Publish(_) => Err(ExitError::not_implemented("pop publish")),
-        Command::Analyze => Err(ExitError::not_implemented("pop analyze")),
-        Command::Summarize(_) => Err(ExitError::not_implemented("pop summarize")),
-        Command::Summary(SummaryCommand::Edit { .. }) => {
-            Err(ExitError::not_implemented("pop summary edit"))
+        Command::Publish(args) => commands::publish::run(
+            ctx,
+            commands::publish::Options {
+                local: args.local,
+                server: args.server,
+                yes: args.yes,
+            },
+        ),
+        Command::Analyze => commands::analyze::run(ctx),
+        Command::Summarize(args) => commands::summarize::run(ctx, args.week),
+        Command::Summary(SummaryCommand::Edit { event_id }) => {
+            commands::summarize::edit(ctx, &event_id)
         }
-        Command::Model(ModelCommand::Pull) => Err(ExitError::unavailable("pop model pull")),
-        Command::Ask(_) => Err(ExitError::unavailable("pop ask")),
+        Command::Model(ModelCommand::Pull) => commands::model::pull(ctx),
+        Command::Ask(args) => commands::ask::run(ctx, &args.question.join(" ")),
     }
 }
 
