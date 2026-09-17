@@ -53,9 +53,20 @@ impl DeviceKey {
         let signing = SigningKey::generate(&mut rand::rngs::OsRng);
         let mut body = hex::encode(signing.to_bytes());
         body.push('\n');
-        std::fs::write(&path, body).with_context(|| format!("writing {}", path.display()))?;
-        restrict_file(&path)?;
-        Ok(DeviceKey { signing })
+        // Write the full key to a private temp file first, then link it into
+        // place. `hard_link` fails if the target already exists, so two
+        // concurrent `pop init` runs can never observe a half-written key:
+        // the loser simply loads the winner's key.
+        let tmp = dir.join(format!(".device.key.{}.tmp", std::process::id()));
+        std::fs::write(&tmp, body).with_context(|| format!("writing {}", tmp.display()))?;
+        restrict_file(&tmp)?;
+        let linked = std::fs::hard_link(&tmp, &path);
+        let _ = std::fs::remove_file(&tmp);
+        match linked {
+            Ok(()) => Ok(DeviceKey { signing }),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => DeviceKey::load(),
+            Err(e) => Err(e).with_context(|| format!("creating {}", path.display())),
+        }
     }
 
     pub fn load() -> Result<DeviceKey> {
