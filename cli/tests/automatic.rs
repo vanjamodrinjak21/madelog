@@ -725,3 +725,213 @@ fn capture_replays_the_window_a_recorded_commit_actually_had() {
         "window ended at {until}, the commit was recorded at {recorded_at}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// madelog capture --record
+// ---------------------------------------------------------------------------
+
+/// A repository whose commit the hook missed: the session is there, but the
+/// commit was recorded without it.
+fn repo_missing_its_session() -> (TestRepo, tempfile::TempDir, String) {
+    let repo = init_repo();
+    init_madelog(&repo);
+    // Recorded with no AI tool in sight, the way the bug left it.
+    repo.write("src/parser.rs", &fixture_parser_source());
+    let sha = repo.commit_all("feat: parse log lines");
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    assert!(sessions(&repo).is_empty(), "the hook found nothing");
+
+    // Now the session is readable again. It ran a minute ago, which is inside
+    // the window that commit had: the replay ends when madelog recorded it.
+    let home = fake_claude(&repo, Utc::now() - chrono::Duration::minutes(1));
+    (repo, home, sha)
+}
+
+#[test]
+fn capture_record_appends_the_sessions_the_hook_missed() {
+    let (_lock, _machine) = isolate_machine();
+    let (repo, _home, sha) = repo_missing_its_session();
+
+    let out =
+        madelog::run_capture(repo.root(), &["capture", "--record", "--commit", &sha]).unwrap();
+
+    assert!(out.contains("recorded 1 AI session"), "{out}");
+    let found = sessions(&repo);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].tool, "claude-code");
+    let file = found[0]
+        .files
+        .iter()
+        .find(|f| f.path == "src/parser.rs")
+        .unwrap();
+    let written = fixture_parser_source()
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .count() as u64;
+    assert_eq!(file.ai_lines, written);
+
+    // Anchored to that commit, and the chain still adds up.
+    let event = events(&repo)
+        .into_iter()
+        .find(|e| e.kind == EventKind::AiSession)
+        .unwrap();
+    assert_eq!(event.commit_sha.as_deref(), Some(sha.as_str()));
+    assert!(madelog::run_capture(repo.root(), &["verify"])
+        .unwrap()
+        .contains("chain ok"));
+}
+
+#[test]
+fn capture_record_twice_records_nothing_the_second_time() {
+    let (_lock, _machine) = isolate_machine();
+    let (repo, _home, sha) = repo_missing_its_session();
+
+    madelog::run_capture(repo.root(), &["capture", "--record", "--commit", &sha]).unwrap();
+    let after_first = events(&repo).len();
+
+    let again =
+        madelog::run_capture(repo.root(), &["capture", "--record", "--commit", &sha]).unwrap();
+
+    assert!(again.contains("already has 1 AI session"), "{again}");
+    assert_eq!(events(&repo).len(), after_first, "nothing was appended");
+    assert_eq!(sessions(&repo).len(), 1);
+}
+
+#[test]
+fn capture_record_says_so_when_there_is_nothing_to_attribute() {
+    let (_lock, _machine) = isolate_machine();
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.rs", "// by hand\n");
+    let sha = repo.commit_all("feat: written by a person");
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    let before = events(&repo).len();
+
+    let out =
+        madelog::run_capture(repo.root(), &["capture", "--record", "--commit", &sha]).unwrap();
+
+    assert!(out.contains("no AI session wrote anything"), "{out}");
+    assert_eq!(events(&repo).len(), before);
+}
+
+#[test]
+fn capture_record_all_walks_the_commits_that_have_no_sessions() {
+    let (_lock, _machine) = isolate_machine();
+    let repo = init_repo();
+    init_madelog(&repo);
+
+    // One commit the hook answered, one it missed.
+    let ran_at = Utc::now() - chrono::Duration::minutes(1);
+    let _home = fake_claude(&repo, ran_at);
+    repo.write("src/parser.rs", &fixture_parser_source());
+    repo.commit_all("feat: parse log lines");
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    assert_eq!(sessions(&repo).len(), 1, "the hook got this one");
+
+    // A second commit carrying the subagent's work, recorded without the
+    // session because the tool logs were out of reach at the time.
+    reset_ai_tools();
+    repo.write(
+        "src/lib.rs",
+        "// crate root\npub mod parser;\npub mod store;\n",
+    );
+    let missed = repo.commit_all("feat: declare the module");
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    assert_eq!(sessions(&repo).len(), 1, "still only the first one");
+
+    let _home = fake_claude(&repo, ran_at);
+    let out = madelog::run_capture(repo.root(), &["capture", "--record", "--all"]).unwrap();
+
+    assert!(out.contains("already answered"), "{out}");
+    assert!(out.contains("recorded"), "{out}");
+    let found = sessions(&repo);
+    assert_eq!(found.len(), 2, "{found:#?}");
+
+    // The new one is anchored to the commit that was missing it, and the
+    // first commit's session was left exactly as it was.
+    let anchors: Vec<String> = events(&repo)
+        .into_iter()
+        .filter(|e| e.kind == EventKind::AiSession)
+        .filter_map(|e| e.commit_sha)
+        .collect();
+    assert!(anchors.contains(&missed), "{anchors:?}");
+    assert_eq!(
+        anchors.iter().filter(|a| **a == missed).count(),
+        1,
+        "once, not twice"
+    );
+}
+
+#[test]
+fn capture_record_all_is_a_no_op_once_every_commit_is_answered() {
+    let (_lock, _machine) = isolate_machine();
+    let (repo, _home, _sha) = repo_missing_its_session();
+
+    madelog::run_capture(repo.root(), &["capture", "--record", "--all"]).unwrap();
+    let after_first = events(&repo).len();
+
+    let again = madelog::run_capture(repo.root(), &["capture", "--record", "--all"]).unwrap();
+
+    assert_eq!(events(&repo).len(), after_first, "{again}");
+    assert!(again.contains("already answered"), "{again}");
+    assert!(
+        again.contains("recorded 0 AI sessions"),
+        "the summary says nothing happened: {again}"
+    );
+    assert!(madelog::run_capture(repo.root(), &["verify"])
+        .unwrap()
+        .contains("chain ok"));
+}
+
+#[test]
+fn capture_record_refuses_when_ai_sessions_are_turned_off() {
+    let (_lock, _machine) = isolate_machine();
+    let repo = init_repo();
+    isolate_device_key();
+    isolate_ai_tools();
+    madelog::run_capture(
+        repo.root(),
+        &[
+            "init",
+            "--what",
+            "a thing",
+            "--no-record-ai-sessions",
+            "--yes",
+        ],
+    )
+    .unwrap();
+    repo.write("src/parser.rs", &fixture_parser_source());
+    repo.commit_all("feat: parse log lines");
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    let _home = fake_claude(&repo, Utc::now() - chrono::Duration::minutes(1));
+
+    let err = madelog::run_capture(repo.root(), &["capture", "--record"]).unwrap_err();
+
+    assert!(format!("{err:#}").contains("turned off"), "{err:#}");
+    assert!(sessions(&repo).is_empty());
+    // The dry run still works, so you can see what you are turning down.
+    assert!(madelog::run_capture(repo.root(), &["capture"])
+        .unwrap()
+        .contains("claude-code"));
+}
+
+#[test]
+fn capture_record_refuses_a_commit_the_log_does_not_have() {
+    let (_lock, _machine) = isolate_machine();
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.rs", "// one\n");
+    repo.commit_all("first");
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    // A second commit that no hook ever saw.
+    repo.write("b.rs", "// two\n");
+    let unrecorded = repo.commit_all("second");
+
+    let err = madelog::run_capture(
+        repo.root(),
+        &["capture", "--record", "--commit", &unrecorded],
+    )
+    .unwrap_err();
+
+    assert!(format!("{err:#}").contains("madelog backfill"), "{err:#}");
+}

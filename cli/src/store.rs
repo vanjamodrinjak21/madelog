@@ -173,6 +173,36 @@ impl Store {
         Ok(n > 0)
     }
 
+    /// Does this commit already have AI sessions recorded against it?
+    ///
+    /// What makes `madelog capture --record` idempotent: a commit that has
+    /// any session is left exactly as it is.
+    pub fn has_ai_sessions(&self, sha: &str) -> Result<bool> {
+        let n: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM events WHERE kind = 'ai_session' AND commit_sha = ?1",
+            [sha],
+            |r| r.get(0),
+        )?;
+        Ok(n > 0)
+    }
+
+    /// Every commit in the log, oldest first.
+    pub fn recorded_commits(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT commit_sha FROM events
+             WHERE kind = 'commit' AND commit_sha IS NOT NULL ORDER BY seq ASC",
+        )?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for sha in rows {
+            let sha = sha?;
+            if !out.contains(&sha) {
+                out.push(sha);
+            }
+        }
+        Ok(out)
+    }
+
     pub fn verify(&self) -> Result<Verification> {
         Ok(chain::verify(&self.all()?))
     }
@@ -295,6 +325,21 @@ mod tests {
         assert!(store.first_of_kind(EventKind::Intent).unwrap().is_none());
         assert!(store.has_commit(&sha).unwrap());
         assert!(!store.has_commit(&"c".repeat(40)).unwrap());
+        assert_eq!(store.recorded_commits().unwrap(), vec![sha.clone()]);
+        assert!(!store.has_ai_sessions(&sha).unwrap());
+
+        store
+            .append(
+                EventKind::AiSession,
+                Some(&sha),
+                serde_json::json!({
+                    "tool": "claude-code", "model": null, "session_id": "s",
+                    "prompt": null, "response_excerpt": null, "files": [], "accepted": false
+                }),
+            )
+            .unwrap();
+        assert!(store.has_ai_sessions(&sha).unwrap());
+        assert!(!store.has_ai_sessions(&"c".repeat(40)).unwrap());
     }
 
     #[test]

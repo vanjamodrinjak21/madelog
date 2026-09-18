@@ -138,6 +138,12 @@ pub struct CaptureArgs {
     /// The commit to explain. HEAD when omitted; a short sha will do.
     #[arg(long, value_name = "SHA")]
     pub commit: Option<String>,
+    /// Append the ai_session events instead of only showing them.
+    #[arg(long)]
+    pub record: bool,
+    /// With --record: every recorded commit that has no sessions yet.
+    #[arg(long, requires = "record", conflicts_with = "commit")]
+    pub all: bool,
     /// Print the sessions and the attribution as JSON.
     #[arg(long)]
     pub json: bool,
@@ -302,7 +308,15 @@ pub fn dispatch(cli: Cli, ctx: &mut Ctx<'_>) -> Result<()> {
         Command::Hook(HookCommand::PostRewrite) => commands::hook::post_rewrite(ctx),
         Command::Hook(HookCommand::Auto(args)) => commands::hook::auto(ctx, &args.hook),
         Command::Status(args) => commands::status::run(ctx, args.json),
-        Command::Capture(args) => commands::capture::run(ctx, args.commit.as_deref(), args.json),
+        Command::Capture(args) => commands::capture::run(
+            ctx,
+            commands::capture::Options {
+                commit: args.commit,
+                record: args.record,
+                all: args.all,
+                json: args.json,
+            },
+        ),
         Command::Doctor(args) => commands::doctor::run(ctx, args.fix),
         Command::Open(args) => commands::open::run(ctx, args.print),
         Command::Log(args) => commands::log::run(ctx, args.json),
