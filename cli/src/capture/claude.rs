@@ -9,19 +9,26 @@
 //! ```
 //!
 //! The directory name is a lossy encoding of the working directory, so it is
-//! only ever used as a prefilter: `history.jsonl` carries the real path, and
-//! every transcript record repeats it in `cwd`.
+//! only ever used as a prefilter: `history.jsonl` carries the real path.
+//!
+//! Two things about long sessions decide the shape of everything here. A
+//! session can keep writing for hours after its last prompt — subagents run
+//! on, and the person is not typing while they do — so a session is **never**
+//! selected by when it was last spoken to. And one session's files can run to
+//! a hundred megabytes, so the files are prefiltered by modification time:
+//! a transcript last written before the window began cannot contain a write
+//! inside it, and is not opened at all.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
 use super::{
     for_each_line, from_epoch_millis, home_override, is_meaningful, is_within, jsonl_files,
-    mode_of, overlaps, parse_ts, shorten, text_lines, Adapter, CapturedSession, Detection, Write,
-    WriteKind,
+    mode_of, parse_ts, shorten, text_lines, Adapter, CapturedSession, Detection, Write, WriteKind,
 };
 
 /// Overrides `~/.claude`, so tests never read a real transcript.
@@ -37,6 +44,13 @@ const WORKTREE_SCAN_LINES: usize = 500;
 
 /// How deep `subagents/` nests: `subagents/workflows/wf_<id>/agent-<id>.jsonl`.
 const SUBAGENT_DEPTH: usize = 4;
+
+/// How much slack the modification-time prefilter allows.
+///
+/// A file's mtime is when the last line was appended, which is at or after the
+/// timestamp inside that line, so the prefilter is already conservative. The
+/// margin covers a clock that disagrees with itself by a little.
+const MTIME_SLACK_SECONDS: i64 = 120;
 
 pub struct ClaudeCode;
 
@@ -66,21 +80,39 @@ impl Adapter for ClaudeCode {
         let Some(projects) = projects_dir() else {
             return Vec::new();
         };
-        let ids = enumerate(repo_root, since, until);
+        let dirs = project_dirs(&projects);
         let mut out = Vec::new();
-        for id in ids {
-            if let Some(session) = read_session(&projects, repo_root, &id) {
-                if overlaps(session.started, session.ended, since, until) {
-                    out.push(session);
-                }
+        for found in select(&dirs, repo_root, since, until, Fold::Worktrees) {
+            let Some(session) = read_session(&found, repo_root, since, until) else {
+                continue;
+            };
+            // The file prefilter is about what a file *could* hold; this is
+            // about what it does. A session that wrote nothing in the window
+            // and was not itself running during it did not happen here.
+            if !session.writes.is_empty()
+                || super::overlaps(session.started, session.ended, since, until)
+            {
+                out.push(session);
             }
         }
         out
     }
 
     fn touching(&self, repo_root: &Path, since: DateTime<Utc>, until: DateTime<Utc>) -> usize {
-        // `history.jsonl` alone answers this, and it is one small file.
-        direct_session_ids(repo_root, since, until).len()
+        // `history.jsonl` plus one stat per file. No transcript is opened —
+        // which is why this one does not fold worktrees: a count is not worth
+        // peeking into every other project's transcripts for.
+        let Some(projects) = projects_dir() else {
+            return 0;
+        };
+        select(
+            &project_dirs(&projects),
+            repo_root,
+            since,
+            until,
+            Fold::None,
+        )
+        .len()
     }
 }
 
@@ -108,58 +140,209 @@ pub fn history_path() -> Option<PathBuf> {
 // (a) enumerate
 // ---------------------------------------------------------------------------
 
-/// Every session id worth opening for this repository and window.
+/// What `history.jsonl` knows about one session, without opening a transcript.
+#[derive(Debug, Clone)]
+struct HistorySession {
+    id: String,
+    project: String,
+    /// The first thing the person asked, already shortened.
+    first_prompt: Option<String>,
+    prompt_count: u64,
+    first_at: DateTime<Utc>,
+    last_at: DateTime<Utc>,
+}
+
+/// Whether a session belonging to another directory is worth peeking into.
 ///
-/// Sessions whose `project` is the repository come straight out of
-/// `history.jsonl`. Sessions run in a git worktree name the worktree instead,
-/// so every other session in the window is peeked at for a `worktree-state`
-/// record pointing back here.
-fn enumerate(repo_root: &Path, since: DateTime<Utc>, until: DateTime<Utc>) -> Vec<String> {
-    let mut ids = direct_session_ids(repo_root, since, until);
-    for id in worktree_session_ids(repo_root, since, until) {
-        if !ids.contains(&id) {
-            ids.push(id);
-        }
-    }
-    ids
+/// Folding costs a read of every candidate's first records, and over a long
+/// window there are hundreds of candidates — every session of every project
+/// on the machine. The hook pays it, because its window is a few hours wide
+/// and a worktree's work is real work. `madelog status` does not, because it
+/// is printing a number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Fold {
+    Worktrees,
+    None,
 }
 
-/// Session ids whose `history.jsonl` entries name this repository.
-fn direct_session_ids(repo_root: &Path, since: DateTime<Utc>, until: DateTime<Utc>) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for entry in history_entries(since, until) {
-        if is_within(repo_root, Path::new(&entry.project)) && !out.contains(&entry.session_id) {
-            out.push(entry.session_id);
-        }
-    }
-    out
+/// A session that is worth opening, and the files worth opening for it.
+#[derive(Debug, Clone)]
+struct Selected {
+    session: HistorySession,
+    /// The transcripts that could hold a write inside the window: every file
+    /// modified at or after the start of it.
+    files: Vec<PathBuf>,
 }
 
-/// Session ids from somewhere else in the window that fold back to this
-/// repository through a `worktree-state` record.
-fn worktree_session_ids(
+/// Every session that could have written into this repository in the window.
+///
+/// Selection is deliberately not about when the person last typed. A session
+/// is taken when it had started by the end of the window and at least one of
+/// its files was written at or after the start of it — which is exactly the
+/// condition for it to be able to carry a write inside the window.
+fn select(
+    dirs: &[PathBuf],
     repo_root: &Path,
     since: DateTime<Utc>,
     until: DateTime<Utc>,
-) -> Vec<String> {
-    let Some(projects) = projects_dir() else {
-        return Vec::new();
-    };
+    fold: Fold,
+) -> Vec<Selected> {
+    let cutoff = since - chrono::Duration::seconds(MTIME_SLACK_SECONDS);
     let mut out = Vec::new();
-    let mut seen: Vec<String> = Vec::new();
-    for entry in history_entries(since, until) {
-        if is_within(repo_root, Path::new(&entry.project)) || seen.contains(&entry.session_id) {
+    for session in history_sessions(until) {
+        // The cheap question first: is this session even a candidate? Most
+        // of the sessions on a machine belong to other projects, and asking
+        // the filesystem about every one of them is what makes this slow.
+        let mine = is_within(repo_root, Path::new(&session.project));
+        if !mine && fold == Fold::None {
             continue;
         }
-        seen.push(entry.session_id.clone());
-        if transcripts_for(&projects, &entry.session_id)
+        let files = transcripts_for(dirs, &session.id);
+        if files.is_empty() {
+            continue;
+        }
+        let recent: Vec<PathBuf> = files
             .iter()
+            .filter(|path| modified_at_or_after(path, cutoff))
+            .cloned()
+            .collect();
+        if recent.is_empty() {
+            // Nothing in this session has been written since the window
+            // opened, so it cannot have contributed to this commit.
+            continue;
+        }
+
+        if mine {
+            out.push(Selected {
+                session,
+                files: recent,
+            });
+            continue;
+        }
+        // Somewhere else — unless it is a worktree of this repository. The
+        // `worktree-state` record is near the top of the main transcript, so
+        // both it and the recent files are worth a short peek.
+        if files
+            .iter()
+            .take(1)
+            .chain(recent.iter())
             .any(|path| folds_into(path, repo_root))
         {
-            out.push(entry.session_id);
+            out.push(Selected {
+                session,
+                files: recent,
+            });
         }
     }
     out
+}
+
+/// Every session `history.jsonl` knows about that had started by `until`,
+/// with its prompt facts, in the order they first appear.
+fn history_sessions(until: DateTime<Utc>) -> Vec<HistorySession> {
+    let Some(path) = history_path() else {
+        return Vec::new();
+    };
+    let mut order: Vec<String> = Vec::new();
+    let mut by_id: BTreeMap<String, HistorySession> = BTreeMap::new();
+
+    for_each_line(&path, |line| {
+        if let Some(value) = json(line) {
+            let at = value
+                .get("timestamp")
+                .and_then(Value::as_i64)
+                .and_then(from_epoch_millis);
+            let project = value.get("project").and_then(Value::as_str);
+            let id = value.get("sessionId").and_then(Value::as_str);
+            if let (Some(at), Some(project), Some(id)) = (at, project, id) {
+                if at <= until {
+                    // A slash command is something you told the tool, not
+                    // something you asked it to build. It still marks the
+                    // session as active, so it counts for the times.
+                    let display = value.get("display").and_then(Value::as_str);
+                    let asked = display.filter(|d| !is_slash_command(d));
+                    let prompt = asked.and_then(shorten);
+                    match by_id.get_mut(id) {
+                        Some(found) => {
+                            if asked.is_some() {
+                                found.prompt_count += 1;
+                                if found.first_prompt.is_none() {
+                                    found.first_prompt = prompt;
+                                }
+                            }
+                            found.first_at = found.first_at.min(at);
+                            found.last_at = found.last_at.max(at);
+                        }
+                        None => {
+                            order.push(id.to_string());
+                            by_id.insert(
+                                id.to_string(),
+                                HistorySession {
+                                    id: id.to_string(),
+                                    project: project.to_string(),
+                                    first_prompt: prompt,
+                                    prompt_count: u64::from(asked.is_some()),
+                                    first_at: at,
+                                    last_at: at,
+                                },
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        true
+    });
+
+    order
+        .into_iter()
+        .filter_map(|id| by_id.remove(&id))
+        .collect()
+}
+
+/// Is this a slash command — `/model fable`, `/done`, `/code-review:pr` —
+/// rather than a sentence?
+///
+/// The first token after the slash is a command name: letters, digits and the
+/// punctuation a plugin name uses. A path pasted at the start of a prompt
+/// (`/Users/ana/spec.pdf use this`) has another slash in that token, so it is
+/// a prompt and is treated as one.
+fn is_slash_command(display: &str) -> bool {
+    let Some(rest) = display.trim_start().strip_prefix('/') else {
+        return false;
+    };
+    let name = rest.split_whitespace().next().unwrap_or("");
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':'))
+}
+
+/// Was this file written at or after `cutoff`? An unreadable mtime counts as
+/// yes: better to read a file we did not need than to miss a write.
+fn modified_at_or_after(path: &Path, cutoff: DateTime<Utc>) -> bool {
+    let Ok(modified) = std::fs::metadata(path).and_then(|m| m.modified()) else {
+        return true;
+    };
+    at_or_after(modified, cutoff)
+}
+
+fn at_or_after(modified: SystemTime, cutoff: DateTime<Utc>) -> bool {
+    DateTime::<Utc>::from(modified) >= cutoff
+}
+
+/// The directories under `~/.claude/projects`, listed once per run.
+fn project_dirs(projects: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(projects) else {
+        return Vec::new();
+    };
+    let mut dirs: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
+    dirs.sort();
+    dirs
 }
 
 /// Does this transcript say it is a worktree of `repo_root`?
@@ -183,67 +366,26 @@ fn folds_into(path: &Path, repo_root: &Path) -> bool {
     folds
 }
 
-#[derive(Debug, Clone)]
-struct HistoryEntry {
-    session_id: String,
-    project: String,
-}
-
-/// Every `history.jsonl` line whose timestamp falls in the window.
-fn history_entries(since: DateTime<Utc>, until: DateTime<Utc>) -> Vec<HistoryEntry> {
-    let Some(path) = history_path() else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for_each_line(&path, |line| {
-        if let Some(value) = json(line) {
-            let at = value
-                .get("timestamp")
-                .and_then(Value::as_i64)
-                .and_then(from_epoch_millis);
-            let project = value.get("project").and_then(Value::as_str);
-            let session_id = value.get("sessionId").and_then(Value::as_str);
-            if let (Some(at), Some(project), Some(session_id)) = (at, project, session_id) {
-                if at >= since && at <= until {
-                    out.push(HistoryEntry {
-                        session_id: session_id.to_string(),
-                        project: project.to_string(),
-                    });
-                }
-            }
-        }
-        true
-    });
-    out
-}
-
-/// Every file that belongs to one session: the transcript itself and every
-/// subagent transcript under it.
-fn transcripts_for(projects: &Path, session_id: &str) -> Vec<PathBuf> {
+/// Every file that belongs to one session: the transcript itself first, then
+/// every subagent transcript under it.
+fn transcripts_for(dirs: &[PathBuf], session_id: &str) -> Vec<PathBuf> {
     if !is_safe_session_id(session_id) {
         return Vec::new();
     }
-    let mut out = Vec::new();
-    let Ok(entries) = std::fs::read_dir(projects) else {
-        return out;
-    };
-    let mut dirs: Vec<PathBuf> = entries
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.is_dir())
-        .collect();
-    dirs.sort();
+    let mut main = Vec::new();
+    let mut subagents = Vec::new();
     for dir in dirs {
-        let main = dir.join(format!("{session_id}.jsonl"));
-        if main.is_file() {
-            out.push(main);
+        let transcript = dir.join(format!("{session_id}.jsonl"));
+        if transcript.is_file() {
+            main.push(transcript);
         }
-        let subagents = dir.join(session_id).join("subagents");
-        if subagents.is_dir() {
-            out.extend(jsonl_files(&subagents, SUBAGENT_DEPTH));
+        let nested = dir.join(session_id).join("subagents");
+        if nested.is_dir() {
+            subagents.extend(jsonl_files(&nested, SUBAGENT_DEPTH));
         }
     }
-    out
+    main.extend(subagents);
+    main
 }
 
 /// A session id comes from a file madelog did not write: never let one out of
@@ -262,8 +404,8 @@ fn is_safe_session_id(session_id: &str) -> bool {
 
 #[derive(Default)]
 struct Builder {
-    first_prompt: Option<String>,
-    prompt_count: u64,
+    /// Only a fallback: the prompt normally comes from `history.jsonl`.
+    transcript_prompt: Option<String>,
     models: Vec<String>,
     title: Option<String>,
     ai_title: Option<String>,
@@ -272,60 +414,79 @@ struct Builder {
     last_ts: Option<DateTime<Utc>>,
     /// Keyed by absolute path, so several edits of one file are one write.
     writes: BTreeMap<PathBuf, Write>,
-    confirmed_cwd: bool,
 }
 
-/// Read every file of one session and fold it into a [`CapturedSession`].
+/// Read the chosen files of one session and fold them into a
+/// [`CapturedSession`].
 ///
-/// Returns `None` when there is no transcript, or when nothing in it confirms
-/// the session really ran in this repository.
-fn read_session(projects: &Path, repo_root: &Path, session_id: &str) -> Option<CapturedSession> {
-    let files = transcripts_for(projects, session_id);
-    if files.is_empty() {
-        return None;
-    }
+/// The prompt facts come from `history.jsonl`, which already has them, so a
+/// thirteen-megabyte transcript is never read for a sentence.
+fn read_session(
+    found: &Selected,
+    repo_root: &Path,
+    since: DateTime<Utc>,
+    until: DateTime<Utc>,
+) -> Option<CapturedSession> {
     let mut builder = Builder::default();
-    for file in &files {
-        read_transcript(file, repo_root, &mut builder);
+    for file in &found.files {
+        read_transcript(file, repo_root, since, until, &mut builder);
     }
-    if !builder.confirmed_cwd {
-        return None;
-    }
-    let started = builder.first_ts?;
-    let ended = builder.last_ts.unwrap_or(started);
+
+    let history = &found.session;
+    let started = match builder.first_ts {
+        Some(at) => at.min(history.first_at),
+        None => history.first_at,
+    };
+    let ended = match builder.last_ts {
+        Some(at) => at.max(history.last_at),
+        None => history.last_at,
+    };
 
     let mut writes: Vec<Write> = builder.writes.into_values().collect();
     writes.sort_by(|a, b| a.path.cmp(&b.path));
 
     Some(CapturedSession {
         tool: "claude-code".to_string(),
-        session_id: session_id.to_string(),
+        session_id: history.id.clone(),
         model: mode_of(&builder.models),
         started,
         ended,
-        prompt: builder.first_prompt,
-        prompt_count: builder.prompt_count,
+        prompt: history.first_prompt.clone().or(builder.transcript_prompt),
+        prompt_count: history.prompt_count,
         title: builder.title.or(builder.ai_title),
         writes,
+        writes_recorded: true,
         lines_added_hint: builder.lines_added,
     })
 }
 
-fn read_transcript(path: &Path, repo_root: &Path, builder: &mut Builder) {
+fn read_transcript(
+    path: &Path,
+    repo_root: &Path,
+    since: DateTime<Utc>,
+    until: DateTime<Utc>,
+    builder: &mut Builder,
+) {
     for_each_line(path, |line| {
         if let Some(value) = json(line) {
-            fold_record(&value, repo_root, builder);
+            fold_record(&value, repo_root, since, until, builder);
         }
         true
     });
 }
 
-fn fold_record(value: &Value, repo_root: &Path, builder: &mut Builder) {
-    if let Some(at) = value
+fn fold_record(
+    value: &Value,
+    repo_root: &Path,
+    since: DateTime<Utc>,
+    until: DateTime<Utc>,
+    builder: &mut Builder,
+) {
+    let at = value
         .get("timestamp")
         .and_then(Value::as_str)
-        .and_then(parse_ts)
-    {
+        .and_then(parse_ts);
+    if let Some(at) = at {
         builder.first_ts = Some(match builder.first_ts {
             Some(t) if t <= at => t,
             _ => at,
@@ -335,19 +496,21 @@ fn fold_record(value: &Value, repo_root: &Path, builder: &mut Builder) {
             _ => at,
         });
     }
-    if let Some(cwd) = value.get("cwd").and_then(Value::as_str) {
-        if is_within(repo_root, Path::new(cwd)) {
-            builder.confirmed_cwd = true;
-        }
-    }
 
     match value.get("type").and_then(Value::as_str).unwrap_or("") {
         "user" => {
-            if let Some(text) = user_prompt(value) {
-                builder.prompt_count += 1;
-                if builder.first_prompt.is_none() {
-                    builder.first_prompt = shorten(&text);
+            // `history.jsonl` has the prompts, so this is only for a session
+            // it does not know about — an older Claude, or a history file
+            // that has been rotated.
+            if builder.transcript_prompt.is_none() {
+                if let Some(text) = user_prompt(value) {
+                    builder.transcript_prompt = shorten(&text);
                 }
+            }
+            // A write belongs to the commit that was made after it, so a
+            // record from outside the window is another commit's business.
+            if !in_window(at, since, until) {
+                return;
             }
             if let Some((path, write)) = tool_write(value, repo_root) {
                 merge_write(&mut builder.writes, path, write);
@@ -361,13 +524,6 @@ fn fold_record(value: &Value, repo_root: &Path, builder: &mut Builder) {
                 .filter(|m| !m.trim().is_empty())
             {
                 builder.models.push(model.to_string());
-            }
-        }
-        "worktree-state" => {
-            if let Some(original) = value.get("originalCwd").and_then(Value::as_str) {
-                if is_within(repo_root, Path::new(original)) {
-                    builder.confirmed_cwd = true;
-                }
             }
         }
         "custom-title" => {
@@ -387,6 +543,15 @@ fn fold_record(value: &Value, repo_root: &Path, builder: &mut Builder) {
     }
 }
 
+/// A record with no timestamp at all is kept: the alternative is losing a
+/// write because one field was missing.
+fn in_window(at: Option<DateTime<Utc>>, since: DateTime<Utc>, until: DateTime<Utc>) -> bool {
+    match at {
+        Some(at) => at >= since && at <= until,
+        None => true,
+    }
+}
+
 fn title_of(value: &Value) -> Option<String> {
     value
         .get("title")
@@ -401,6 +566,9 @@ fn title_of(value: &Value) -> Option<String> {
 /// Sidechain records belong to a subagent, `isMeta` records are injected
 /// system reminders, a compact summary is the model's own recap, and a
 /// `message.content` array is a tool result. None of them is a prompt.
+///
+/// A fallback only: the prompt madelog shows normally comes from
+/// `history.jsonl`, which carries the same text without opening a transcript.
 fn user_prompt(value: &Value) -> Option<String> {
     if value.get("isSidechain").and_then(Value::as_bool) == Some(true) {
         return None;
@@ -679,5 +847,59 @@ mod tests {
         let mut lines = vec!["a".to_string(), "b".to_string()];
         merge_max(&mut lines, vec!["b".to_string(), "c".to_string()]);
         assert_eq!(lines, ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn a_slash_command_is_not_a_prompt() {
+        assert!(is_slash_command("/model fable"));
+        assert!(is_slash_command("/done"));
+        assert!(is_slash_command("/code-review:code-review"));
+        assert!(is_slash_command("  /clear"));
+        assert!(!is_slash_command("build the parser"));
+        assert!(
+            !is_slash_command("'/Users/ana/spec.pdf' use this and write the plan"),
+            "a quoted path is not a command"
+        );
+        assert!(
+            !is_slash_command("/Users/ana/spec.pdf use this"),
+            "a bare path has another slash in its first token"
+        );
+        assert!(!is_slash_command("/"));
+        assert!(!is_slash_command(""));
+    }
+
+    #[test]
+    fn a_record_is_in_the_window_by_its_own_timestamp() {
+        let t = |s: &str| parse_ts(s).unwrap();
+        let since = t("2026-09-18T11:00:00Z");
+        let until = t("2026-09-18T13:00:00Z");
+        assert!(in_window(Some(t("2026-09-18T12:00:00Z")), since, until));
+        assert!(in_window(Some(since), since, until), "inclusive");
+        assert!(in_window(Some(until), since, until), "inclusive");
+        assert!(!in_window(Some(t("2026-09-18T10:59:59Z")), since, until));
+        assert!(!in_window(Some(t("2026-09-18T13:00:01Z")), since, until));
+        assert!(
+            in_window(None, since, until),
+            "a record with no timestamp is kept rather than lost"
+        );
+    }
+
+    #[test]
+    fn the_mtime_prefilter_allows_a_little_slack() {
+        let cutoff = parse_ts("2026-09-18T12:00:00Z").unwrap();
+        let at = |s: &str| SystemTime::from(parse_ts(s).unwrap());
+        assert!(at_or_after(at("2026-09-18T12:00:00Z"), cutoff));
+        assert!(at_or_after(at("2026-09-18T12:00:01Z"), cutoff));
+        assert!(!at_or_after(at("2026-09-18T11:59:59Z"), cutoff));
+    }
+
+    #[test]
+    fn a_file_whose_mtime_cannot_be_read_is_read_anyway() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let gone = dir.path().join("not-there.jsonl");
+        assert!(
+            modified_at_or_after(&gone, Utc::now()),
+            "missing rather than old: never drop a write over a stat"
+        );
     }
 }

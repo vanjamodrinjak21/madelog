@@ -549,3 +549,179 @@ fn a_session_that_wrote_nothing_in_this_commit_is_not_attached_to_it() {
     madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
     assert_eq!(sessions(&repo).len(), 1);
 }
+
+// ---------------------------------------------------------------------------
+// the long-session regression
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_hook_finds_a_session_that_kept_writing_after_its_last_prompt() {
+    let (_lock, _machine) = isolate_machine();
+    let repo = init_repo();
+    init_madelog(&repo);
+    let now = Utc::now();
+    // The real failure: the last prompt was four hours ago, and a subagent
+    // wrote a minute ago. Selecting by prompt time loses the whole session.
+    let _home = fake_claude_long_session(
+        &repo,
+        now - chrono::Duration::hours(4),
+        now - chrono::Duration::minutes(1),
+    );
+
+    let source = fixture_long_session_source();
+    repo.write("cli/src/capture/mod.rs", &source);
+    let sha = repo.commit_all("feat(cli): own AI-session capture");
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+
+    let found = sessions(&repo);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].session_id, FIXTURE_LONG_SESSION);
+    assert_eq!(
+        found[0].prompt.as_deref(),
+        Some("build the capture layer and the automatic mode")
+    );
+    let file = found[0]
+        .files
+        .iter()
+        .find(|f| f.path == "cli/src/capture/mod.rs")
+        .unwrap();
+    let meaningful = source.lines().filter(|l| !l.trim().is_empty()).count() as u64;
+    assert_eq!(file.ai_lines, meaningful);
+
+    let anchored = events(&repo)
+        .into_iter()
+        .find(|e| e.kind == EventKind::AiSession)
+        .unwrap();
+    assert_eq!(anchored.commit_sha.as_deref(), Some(sha.as_str()));
+}
+
+// ---------------------------------------------------------------------------
+// madelog capture
+// ---------------------------------------------------------------------------
+
+#[test]
+fn capture_explains_what_a_commit_would_get_and_records_nothing() {
+    let (_lock, _machine) = isolate_machine();
+    let repo = init_repo();
+    init_madelog(&repo);
+    let _home = fake_claude(&repo, Utc::now());
+
+    let source = fixture_parser_source();
+    repo.write("src/parser.rs", &source);
+    let sha = repo.commit_all("feat: parse log lines");
+
+    let before = events(&repo).len();
+    let out = madelog::run_capture(repo.root(), &["capture", "--commit", &sha[..7]]).unwrap();
+
+    assert_eq!(events(&repo).len(), before, "a dry run records nothing");
+    assert!(out.contains("dry run  nothing was recorded"), "{out}");
+    assert!(out.contains("feat: parse log lines"), "{out}");
+    assert!(out.contains("window"), "{out}");
+    assert!(out.contains("claude-code"), "{out}");
+    assert!(out.contains(FIXTURE_CLAUDE_SESSION), "{out}");
+    assert!(
+        out.contains("write a parser for the log lines"),
+        "it shows the prompt: {out}"
+    );
+    assert!(out.contains("src/parser.rs"), "{out}");
+    assert!(out.contains("ai,"), "it shows the per-file counts: {out}");
+}
+
+#[test]
+fn capture_defaults_to_head_and_speaks_json() {
+    let (_lock, _machine) = isolate_machine();
+    let repo = init_repo();
+    init_madelog(&repo);
+    let _home = fake_claude(&repo, Utc::now());
+    repo.write("src/parser.rs", &fixture_parser_source());
+    let sha = repo.commit_all("feat: parse log lines");
+
+    let out = madelog::run_capture(repo.root(), &["capture", "--json"]).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&out).expect("valid JSON");
+
+    assert_eq!(v["commit"], sha, "no --commit means HEAD");
+    assert_eq!(v["message"], "feat: parse log lines");
+    assert!(v["window"]["since"].is_string());
+    assert!(v["window"]["until"].is_string());
+
+    let sessions = v["sessions"].as_array().unwrap();
+    let claude = sessions
+        .iter()
+        .find(|s| s["tool"] == "claude-code")
+        .expect("the claude session");
+    assert_eq!(claude["session_id"], FIXTURE_CLAUDE_SESSION);
+    assert_eq!(claude["writes_recorded"], true);
+
+    let would = v["would_record"].as_array().unwrap();
+    let payload = would
+        .iter()
+        .find(|p| p["tool"] == "claude-code")
+        .expect("the claude payload");
+    assert_eq!(payload["accepted"], true);
+    assert!(payload["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|f| f["path"] == "src/parser.rs"));
+}
+
+#[test]
+fn capture_says_so_when_no_session_touched_the_commit() {
+    let (_lock, _machine) = isolate_machine();
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.rs", "// by hand\n");
+    repo.commit_all("feat: written by a person");
+
+    let out = madelog::run_capture(repo.root(), &["capture"]).unwrap();
+
+    assert!(
+        out.contains("No AI session touched this repository in that window."),
+        "{out}"
+    );
+    // And it lists what it looked at, so the silence is diagnosable.
+    for tool in ["claude-code", "codex", "cursor", "copilot"] {
+        assert!(out.contains(tool), "no line for {tool}:\n{out}");
+    }
+}
+
+#[test]
+fn capture_refuses_a_commit_this_repository_does_not_have() {
+    let (_lock, _machine) = isolate_machine();
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.rs", "// x\n");
+    repo.commit_all("first");
+
+    let err = madelog::run_capture(repo.root(), &["capture", "--commit", "deadbeef"]).unwrap_err();
+    assert!(format!("{err:#}").contains("deadbeef"), "{err:#}");
+}
+
+#[test]
+fn capture_replays_the_window_a_recorded_commit_actually_had() {
+    let (_lock, _machine) = isolate_machine();
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.rs", "// one\n");
+    let first = repo.commit_all("first");
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    repo.write("b.rs", "// two\n");
+    repo.commit_all("second");
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+
+    // The first commit's window ended when madelog recorded it, not now.
+    let out =
+        madelog::run_capture(repo.root(), &["capture", "--commit", &first, "--json"]).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let until = v["window"]["until"].as_str().unwrap().to_string();
+
+    let recorded_at = events(&repo)
+        .into_iter()
+        .find(|e| e.commit_sha.as_deref() == Some(first.as_str()))
+        .unwrap()
+        .ts;
+    assert!(
+        recorded_at.starts_with(&until[..until.len() - 1]),
+        "window ended at {until}, the commit was recorded at {recorded_at}"
+    );
+}

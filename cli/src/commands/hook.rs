@@ -164,17 +164,54 @@ impl<'a> Recorder<'a> {
     ///   so a commit a minute after the last one still sees the session that
     ///   produced it.
     fn window_start(&self, meta: &crate::gitrepo::CommitMeta) -> Result<DateTime<Utc>> {
-        let now = Utc::now();
-        let floor = now - Duration::hours(MAX_LOOKBACK_HOURS);
-        let committed = DateTime::from_timestamp(meta.time, 0).unwrap_or(now);
-        let ceiling = committed - Duration::minutes(MIN_LOOKBACK_MINUTES);
-
         let previous = self
             .store
             .last_of_kind(EventKind::Commit)?
             .and_then(|event| commit_time(&event));
-        let start = previous.map_or(floor, |at| at.max(floor));
-        Ok(start.min(ceiling))
+        Ok(self.window_start_from(previous, meta))
+    }
+
+    fn window_start_from(
+        &self,
+        previous: Option<DateTime<Utc>>,
+        meta: &crate::gitrepo::CommitMeta,
+    ) -> DateTime<Utc> {
+        let now = Utc::now();
+        let floor = now - Duration::hours(MAX_LOOKBACK_HOURS);
+        let committed = DateTime::from_timestamp(meta.time, 0).unwrap_or(now);
+        let ceiling = committed - Duration::minutes(MIN_LOOKBACK_MINUTES);
+        previous.map_or(floor, |at| at.max(floor)).min(ceiling)
+    }
+
+    /// The window the hook would use for `sha`, whether or not the commit has
+    /// already been recorded.
+    ///
+    /// For a commit already in the log, the honest replay is the window that
+    /// was in force when it was recorded: it starts at the commit before it in
+    /// the log and ends the moment madelog wrote it down. For one that is not
+    /// recorded, it is the window the next hook run would use.
+    pub fn window_for(&self, sha: &str) -> Result<(DateTime<Utc>, DateTime<Utc>)> {
+        let meta = self.repo.commit_meta(sha)?;
+        let recorded = self
+            .store
+            .all()?
+            .into_iter()
+            .filter(|e| e.kind == EventKind::Commit)
+            .collect::<Vec<_>>();
+
+        let (previous, until) = match recorded
+            .iter()
+            .position(|e| e.commit_sha.as_deref() == Some(sha))
+        {
+            Some(index) => (
+                index.checked_sub(1).and_then(|i| commit_time(&recorded[i])),
+                DateTime::parse_from_rfc3339(&recorded[index].ts)
+                    .map(|at| at.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now()),
+            ),
+            None => (recorded.last().and_then(commit_time), Utc::now()),
+        };
+        Ok((self.window_start_from(previous, &meta), until))
     }
 
     /// Read the AI sessions that ran in the window, match what they wrote
@@ -395,7 +432,7 @@ fn seconds_since_previous_commit(store: &Store, now: &str) -> Result<Option<i64>
 
 /// When a recorded commit was made: `committed_at` if it has one, the moment
 /// madelog saw it otherwise.
-fn commit_time(event: &crate::event::Event) -> Option<DateTime<Utc>> {
+pub(crate) fn commit_time(event: &crate::event::Event) -> Option<DateTime<Utc>> {
     let raw = event
         .payload
         .get("committed_at")

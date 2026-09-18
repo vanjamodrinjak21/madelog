@@ -527,6 +527,7 @@ fn redaction_is_applied_before_anything_is_attributed() {
             lines: vec!["let t = 1;".into()],
             kind: WriteKind::Create,
         }],
+        writes_recorded: true,
         lines_added_hint: None,
     };
 
@@ -542,7 +543,10 @@ fn redaction_is_applied_before_anything_is_attributed() {
         }],
     };
     let payloads = capture::attribute(&[redacted], &diff, root, &[]);
-    assert!(payloads[0].files.is_empty(), "nothing left to attribute");
+    assert!(
+        payloads.is_empty(),
+        "nothing left to attribute, so nothing to record: {payloads:#?}"
+    );
 }
 
 #[test]
@@ -566,4 +570,188 @@ fn every_tool_reports_itself_for_a_repository() {
     let claude = elsewhere.iter().find(|r| r.name == "claude-code").unwrap();
     assert_eq!(claude.sessions, Some(0));
     assert!(claude.line().contains("no sessions touch this repo"));
+}
+
+// ---------------------------------------------------------------------------
+// a session that keeps writing after its last prompt
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_session_whose_last_prompt_is_before_the_window_is_still_found() {
+    let _lock = capture_lock();
+    let repo = init_repo();
+    let now = Utc::now();
+    // The shape of the real failure: the only prompt was hours ago, and a
+    // subagent wrote ten minutes ago.
+    let _home =
+        fake_claude_long_session(&repo, now - Duration::hours(4), now - Duration::minutes(10));
+
+    let sessions =
+        capture::claude::ClaudeCode.sessions(repo.root(), now - Duration::minutes(30), now);
+
+    assert_eq!(
+        sessions.len(),
+        1,
+        "a session is selected by what it wrote, never by when it was last spoken to"
+    );
+    let s = &sessions[0];
+    assert_eq!(s.session_id, FIXTURE_LONG_SESSION);
+    assert_eq!(
+        s.prompt.as_deref(),
+        Some("build the capture layer and the automatic mode"),
+        "the prompt comes from history.jsonl, which is not in the window either"
+    );
+    assert_eq!(s.prompt_count, 1);
+
+    let paths: Vec<String> = s
+        .writes
+        .iter()
+        .map(|w| capture::relative(repo.root(), &w.path).unwrap())
+        .collect();
+    assert_eq!(
+        paths,
+        ["cli/src/capture/mod.rs"],
+        "only the write inside the window: {paths:?}"
+    );
+    assert!(s.writes[0]
+        .lines
+        .contains(&"    let mut out = Vec::new();".to_string()));
+}
+
+#[test]
+fn a_write_from_before_the_window_belongs_to_an_earlier_commit() {
+    let _lock = capture_lock();
+    let repo = init_repo();
+    let now = Utc::now();
+    let _home =
+        fake_claude_long_session(&repo, now - Duration::hours(4), now - Duration::minutes(10));
+
+    // Widen the window back past the early write and both appear.
+    let sessions = capture::claude::ClaudeCode.sessions(repo.root(), now - Duration::hours(5), now);
+    let mut paths: Vec<String> = sessions[0]
+        .writes
+        .iter()
+        .map(|w| capture::relative(repo.root(), &w.path).unwrap())
+        .collect();
+    paths.sort();
+    assert_eq!(
+        paths,
+        ["cli/src/capture/early.rs", "cli/src/capture/mod.rs"]
+    );
+}
+
+#[test]
+fn a_session_whose_files_are_all_older_than_the_window_is_never_opened() {
+    let _lock = capture_lock();
+    let repo = init_repo();
+    let now = Utc::now();
+    let _home = fake_claude_long_session(&repo, now - Duration::hours(4), now - Duration::hours(3));
+
+    // Every file was last written three hours ago; a window that opens an
+    // hour ago cannot contain any of it.
+    assert!(capture::claude::ClaudeCode
+        .sessions(repo.root(), now - Duration::hours(1), now)
+        .is_empty());
+}
+
+#[test]
+fn attribution_finds_the_late_write_in_the_commit_that_carries_it() {
+    let _lock = capture_lock();
+    let repo = init_repo();
+    let now = Utc::now();
+    let source = fixture_long_session_source();
+    repo.write("cli/src/capture/mod.rs", &source);
+    let sha = repo.commit_all("feat(cli): own AI-session capture");
+    init_madelog(&repo);
+    let _home =
+        fake_claude_long_session(&repo, now - Duration::hours(4), now - Duration::minutes(10));
+
+    let git = Repo::discover(repo.root()).unwrap();
+    let diff = git.commit_diff(&sha).unwrap();
+    let sessions = capture::collect(
+        &git,
+        &madelog::config::Config::default(),
+        now - Duration::minutes(30),
+        now,
+    );
+    let payloads = capture::attribute(&sessions, &diff, repo.root(), &[]);
+
+    assert_eq!(payloads.len(), 1, "{payloads:#?}");
+    let file = payloads[0]
+        .files
+        .iter()
+        .find(|f| f.path == "cli/src/capture/mod.rs")
+        .unwrap();
+    let meaningful = source.lines().filter(|l| !l.trim().is_empty()).count() as u64;
+    assert_eq!(file.ai_lines, meaningful);
+    assert!(payloads[0].accepted);
+}
+
+#[test]
+fn a_slash_command_is_never_shown_as_the_prompt() {
+    let _lock = capture_lock();
+    let repo = init_repo();
+    let now = Utc::now();
+    // The fixture's history opens with `/model fable`, the way a real one does.
+    let _home =
+        fake_claude_long_session(&repo, now - Duration::hours(4), now - Duration::minutes(10));
+
+    let sessions =
+        capture::claude::ClaudeCode.sessions(repo.root(), now - Duration::minutes(30), now);
+
+    assert_eq!(
+        sessions[0].prompt.as_deref(),
+        Some("build the capture layer and the automatic mode"),
+        "the first thing asked, not the first thing typed"
+    );
+    assert_eq!(
+        sessions[0].prompt_count, 1,
+        "a slash command is configuration, not a question"
+    );
+}
+
+#[test]
+fn a_session_run_in_a_worktree_folds_back_to_the_repository() {
+    let _lock = capture_lock();
+    let repo = init_repo();
+    let now = Utc::now();
+    let _home = fake_claude_worktree(&repo, now);
+
+    let (since, until) = window();
+    let sessions = capture::claude::ClaudeCode.sessions(repo.root(), since, until);
+
+    assert_eq!(sessions.len(), 1, "{sessions:#?}");
+    assert_eq!(sessions[0].session_id, FIXTURE_WORKTREE_SESSION);
+    let paths: Vec<String> = sessions[0]
+        .writes
+        .iter()
+        .map(|w| capture::relative(repo.root(), &w.path).unwrap())
+        .collect();
+    assert_eq!(
+        paths,
+        ["src/folded.rs"],
+        "the write landed in the repository"
+    );
+}
+
+#[test]
+fn the_session_count_does_not_pay_for_folding_worktrees() {
+    let _lock = capture_lock();
+    let repo = init_repo();
+    let _home = fake_claude_worktree(&repo, Utc::now());
+
+    // `touching` reads an index and stats files; it does not open other
+    // projects' transcripts looking for a worktree, so it does not see this
+    // one. That is the trade `madelog status` makes to stay instant.
+    let (since, until) = window();
+    assert_eq!(
+        capture::claude::ClaudeCode
+            .sessions(repo.root(), since, until)
+            .len(),
+        1
+    );
+    assert_eq!(
+        capture::claude::ClaudeCode.touching(repo.root(), since, until),
+        0
+    );
 }

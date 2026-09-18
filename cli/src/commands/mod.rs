@@ -1,6 +1,7 @@
 //! One file per command, per spec §4.
 
 pub mod backfill;
+pub mod capture;
 pub mod config;
 pub mod doctor;
 pub mod export;

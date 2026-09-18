@@ -113,7 +113,16 @@ pub struct CapturedSession {
     pub prompt: Option<String>,
     pub prompt_count: u64,
     pub title: Option<String>,
+    /// The files this session wrote **inside the window**, and the lines it
+    /// put in them.
     pub writes: Vec<Write>,
+    /// Whether this tool reports the lines it wrote at all.
+    ///
+    /// `false` for Cursor and Copilot, where an empty `writes` means the tool
+    /// cannot say rather than that nothing was written. The difference is
+    /// what decides whether a session with nothing to attribute is still
+    /// worth recording against a commit.
+    pub writes_recorded: bool,
     /// What the tool itself claims it added, when it keeps a count. Used only
     /// where there is no verbatim text to match — Cursor, today.
     pub lines_added_hint: Option<u64>,

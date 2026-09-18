@@ -53,7 +53,7 @@ impl Adapter for Codex {
     ) -> Vec<CapturedSession> {
         let mut out = Vec::new();
         for path in rollouts_for(repo_root) {
-            if let Some(session) = read_rollout(&path, repo_root) {
+            if let Some(session) = read_rollout(&path, repo_root, since, until) {
                 if overlaps(session.started, session.ended, since, until) {
                     out.push(session);
                 }
@@ -121,11 +121,16 @@ struct Builder {
     writes: BTreeMap<PathBuf, Write>,
 }
 
-fn read_rollout(path: &Path, repo_root: &Path) -> Option<CapturedSession> {
+fn read_rollout(
+    path: &Path,
+    repo_root: &Path,
+    since: DateTime<Utc>,
+    until: DateTime<Utc>,
+) -> Option<CapturedSession> {
     let mut builder = Builder::default();
     for_each_line(path, |line| {
         if let Some(value) = json(line) {
-            fold_record(&value, repo_root, &mut builder);
+            fold_record(&value, repo_root, since, until, &mut builder);
         }
         true
     });
@@ -150,16 +155,23 @@ fn read_rollout(path: &Path, repo_root: &Path) -> Option<CapturedSession> {
         prompt_count: builder.prompt_count,
         title: None,
         writes,
+        writes_recorded: true,
         lines_added_hint: None,
     })
 }
 
-fn fold_record(value: &Value, repo_root: &Path, builder: &mut Builder) {
-    if let Some(at) = value
+fn fold_record(
+    value: &Value,
+    repo_root: &Path,
+    since: DateTime<Utc>,
+    until: DateTime<Utc>,
+    builder: &mut Builder,
+) {
+    let at = value
         .get("timestamp")
         .and_then(Value::as_str)
-        .and_then(parse_ts)
-    {
+        .and_then(parse_ts);
+    if let Some(at) = at {
         builder.first_ts = Some(match builder.first_ts {
             Some(t) if t <= at => t,
             _ => at,
@@ -169,6 +181,7 @@ fn fold_record(value: &Value, repo_root: &Path, builder: &mut Builder) {
             _ => at,
         });
     }
+    let in_window = at.map_or(true, |at| at >= since && at <= until);
 
     match value.get("type").and_then(Value::as_str).unwrap_or("") {
         "session_meta" => {
@@ -204,7 +217,9 @@ fn fold_record(value: &Value, repo_root: &Path, builder: &mut Builder) {
                         }
                     }
                 }
-                Some("FileChange") => {
+                Some("FileChange") if in_window => {
+                    // A change from outside the window belongs to the commit
+                    // that was made after it, not to this one.
                     for (path, write) in file_changes(item, repo_root) {
                         merge_write(&mut builder.writes, path, write);
                     }

@@ -228,6 +228,9 @@ fn read_headers(db: &Path, workspace_ids: &[String]) -> Vec<CapturedSession> {
                 .and_then(Value::as_str)
                 .map(str::to_string),
             writes: Vec::new(),
+            // Cursor cannot say what it wrote, so an empty list here means
+            // "no record", not "nothing".
+            writes_recorded: false,
             lines_added_hint: value.get("totalLinesAdded").and_then(Value::as_u64),
         });
     }

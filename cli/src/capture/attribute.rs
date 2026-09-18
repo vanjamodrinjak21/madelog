@@ -54,11 +54,10 @@ impl CommitDiff {
 /// Turn captured sessions into the events the log stores.
 ///
 /// A session is kept when it put at least one line into this commit, and also
-/// when it wrote no files at all — a conversation, or a tool like Cursor that
-/// keeps no verbatim text. What is dropped is a session that wrote files and
-/// landed none of them here: that session belongs to the commit that does
-/// carry its work, and it is recorded there rather than against every commit
-/// made the same day.
+/// when its tool cannot report what it wrote at all — Cursor, today. What is
+/// dropped is a session whose work is not in this commit: it belongs to the
+/// commit that does carry it, and is recorded there rather than against every
+/// commit made the same day.
 ///
 /// `extra` is any other source of attribution for the same commit — today the
 /// Git AI notes, when a user happens to run it. Sources are merged per file,
@@ -73,7 +72,7 @@ pub fn attribute(
     let mut out: Vec<AiSessionPayload> = sessions
         .iter()
         .map(|session| (session, one(session, commit, repo_root)))
-        .filter(|(session, payload)| !payload.files.is_empty() || session.writes.is_empty())
+        .filter(|(session, payload)| !payload.files.is_empty() || !session.writes_recorded)
         .map(|(_, payload)| payload)
         .collect();
 
@@ -207,6 +206,7 @@ mod tests {
                 lines: lines(written),
                 kind: WriteKind::Create,
             }],
+            writes_recorded: true,
             lines_added_hint: None,
         }
     }
@@ -377,6 +377,30 @@ mod tests {
     }
 
     #[test]
+    fn a_session_that_wrote_nothing_in_this_window_is_not_attached() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path();
+        let now = Utc::now();
+        // A Claude session whose writes all landed outside this commit's
+        // window: `writes` is empty, but the tool does report writes, so the
+        // honest reading is "not this commit".
+        let quiet = CapturedSession {
+            tool: "claude-code".into(),
+            session_id: "s-quiet".into(),
+            model: None,
+            started: now,
+            ended: now,
+            prompt: Some("keep going".into()),
+            prompt_count: 1,
+            title: None,
+            writes: vec![],
+            writes_recorded: true,
+            lines_added_hint: None,
+        };
+        assert!(attribute(&[quiet], &CommitDiff::default(), root, &[]).is_empty());
+    }
+
+    #[test]
     fn a_cursor_session_records_that_it_happened_and_claims_nothing() {
         let dir = tempfile::TempDir::new().unwrap();
         let now = Utc::now();
@@ -390,6 +414,7 @@ mod tests {
             prompt_count: 0,
             title: None,
             writes: vec![],
+            writes_recorded: false,
             lines_added_hint: Some(40),
         };
         let out = attribute(&[s], &CommitDiff::default(), dir.path(), &[]);

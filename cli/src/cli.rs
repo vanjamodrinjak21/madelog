@@ -34,6 +34,8 @@ pub enum Command {
     Hook(HookCommand),
     /// Show what madelog has recorded and how this repository is set up.
     Status(StatusArgs),
+    /// Show the AI sessions a commit would get, without recording anything.
+    Capture(CaptureArgs),
     /// Check the setup, and repair what is safe to repair.
     Doctor(DoctorArgs),
     /// Open the rendered page in your browser.
@@ -127,6 +129,16 @@ pub struct BackfillArgs {
 #[derive(Debug, Args)]
 pub struct StatusArgs {
     /// Print the status as JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct CaptureArgs {
+    /// The commit to explain. HEAD when omitted; a short sha will do.
+    #[arg(long, value_name = "SHA")]
+    pub commit: Option<String>,
+    /// Print the sessions and the attribution as JSON.
     #[arg(long)]
     pub json: bool,
 }
@@ -290,6 +302,7 @@ pub fn dispatch(cli: Cli, ctx: &mut Ctx<'_>) -> Result<()> {
         Command::Hook(HookCommand::PostRewrite) => commands::hook::post_rewrite(ctx),
         Command::Hook(HookCommand::Auto(args)) => commands::hook::auto(ctx, &args.hook),
         Command::Status(args) => commands::status::run(ctx, args.json),
+        Command::Capture(args) => commands::capture::run(ctx, args.commit.as_deref(), args.json),
         Command::Doctor(args) => commands::doctor::run(ctx, args.fix),
         Command::Open(args) => commands::open::run(ctx, args.print),
         Command::Log(args) => commands::log::run(ctx, args.json),
@@ -381,6 +394,14 @@ mod tests {
         assert!(matches!(
             parse(&["open", "--print"]).unwrap().command,
             Command::Open(a) if a.print
+        ));
+        assert!(matches!(
+            parse(&["capture"]).unwrap().command,
+            Command::Capture(a) if a.commit.is_none() && !a.json
+        ));
+        assert!(matches!(
+            parse(&["capture", "--commit", "55e37d5", "--json"]).unwrap().command,
+            Command::Capture(a) if a.commit.as_deref() == Some("55e37d5") && a.json
         ));
         assert!(matches!(
             parse(&["hook", "post-merge"]).unwrap().command,

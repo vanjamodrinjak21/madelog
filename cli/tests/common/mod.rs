@@ -265,14 +265,25 @@ pub fn fixture(rel: &str) -> String {
 
 /// Substitute this repository's path and one timestamp into a fixture.
 fn fill(raw: &str, repo: &TestRepo, when: DateTime<Utc>) -> String {
+    fill_at(raw, repo, when, when)
+}
+
+/// The same, with a second timestamp for fixtures that need a later moment —
+/// a subagent that keeps writing after the last prompt.
+fn fill_at(raw: &str, repo: &TestRepo, when: DateTime<Utc>, later: DateTime<Utc>) -> String {
     let root = repo.root().canonicalize().unwrap();
     let root = root
         .to_string_lossy()
         .replace('\\', "\\\\")
         .replace('"', "\\\"");
-    raw.replace("{{REPO_URL}}", &root)
+    raw.replace("{{WORKTREE}}", &format!("{root}-worktrees/feature-folded"))
+        .replace("{{REPO_URL}}", &root)
         .replace("{{REPO}}", &root)
         .replace("\"{{TS_MS}}\"", &when.timestamp_millis().to_string())
+        .replace(
+            "{{TS_LATE_ISO}}",
+            &later.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
+        )
         .replace(
             "{{TS_ISO}}",
             &when.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
@@ -315,6 +326,66 @@ pub fn fake_claude(repo: &TestRepo, when: DateTime<Utc>) -> TempDir {
     std::env::set_var("MADELOG_CLAUDE_HOME", home);
     std::env::remove_var("MADELOG_CLAUDE_PROJECTS_DIR");
     dir
+}
+
+/// The session the long-running Claude fixture describes.
+pub const FIXTURE_LONG_SESSION: &str = "f6a75ad1-60d0-4dbd-a43d-417a147b0171";
+
+/// A fake `~/.claude` for the failure this whole selection rule exists for:
+/// one prompt at `prompt_at`, hours before the window, and a subagent that
+/// writes at `write_at`, inside it.
+///
+/// The main transcript's modification time is pushed back to `prompt_at` so
+/// the fixture also exercises the prefilter: the only file young enough to
+/// open is the subagent's.
+pub fn fake_claude_long_session(
+    repo: &TestRepo,
+    prompt_at: DateTime<Utc>,
+    write_at: DateTime<Utc>,
+) -> TempDir {
+    let dir = TempDir::new().expect("temp claude home");
+    let home = dir.path();
+    let f = |name: &str| fixture(&format!("claude/long-session/{name}"));
+
+    put(
+        &home.join("history.jsonl"),
+        &fill_at(&f("history.jsonl"), repo, prompt_at, write_at),
+    );
+    let project = home.join("projects").join("-fixture-repo");
+    let main = project.join(format!("{FIXTURE_LONG_SESSION}.jsonl"));
+    put(
+        &main,
+        &fill_at(&f("transcript.jsonl"), repo, prompt_at, write_at),
+    );
+    let subagent = project
+        .join(FIXTURE_LONG_SESSION)
+        .join("subagents")
+        .join("agent-a735043ab8c2.jsonl");
+    put(
+        &subagent,
+        &fill_at(&f("subagent.jsonl"), repo, prompt_at, write_at),
+    );
+    // A real transcript's modification time is when its last line was
+    // appended. The fixture has to say the same, or the prefilter is not
+    // being tested at all.
+    set_mtime(&main, prompt_at);
+    set_mtime(&subagent, write_at);
+
+    std::env::set_var("MADELOG_CLAUDE_HOME", home);
+    std::env::remove_var("MADELOG_CLAUDE_PROJECTS_DIR");
+    dir
+}
+
+/// What the long-session fixture wrote inside the window.
+pub fn fixture_long_session_source() -> String {
+    tool_use_content("claude/long-session/subagent.jsonl", "capture/mod.rs")
+}
+
+fn set_mtime(path: &Path, at: DateTime<Utc>) {
+    let when = std::time::SystemTime::UNIX_EPOCH
+        + std::time::Duration::from_secs(at.timestamp().max(0) as u64);
+    let file = std::fs::File::options().write(true).open(path).unwrap();
+    file.set_modified(when).unwrap();
 }
 
 /// What the Claude fixture wrote to `src/parser.rs`, read out of the fixture
@@ -459,4 +530,28 @@ pub fn isolate_machine() -> (MutexGuard<'static, ()>, TempDir) {
     );
     reset_ai_tools();
     (guard, dir)
+}
+
+/// The session the worktree fixture describes.
+pub const FIXTURE_WORKTREE_SESSION: &str = "b7c31e04-2a55-4d91-9f60-83ad1e4c7b22";
+
+/// A fake `~/.claude` for a session run in a git worktree: `history.jsonl`
+/// names the worktree, and only the `worktree-state` record ties it back here.
+pub fn fake_claude_worktree(repo: &TestRepo, when: DateTime<Utc>) -> TempDir {
+    let dir = TempDir::new().expect("temp claude home");
+    let home = dir.path();
+    put(
+        &home.join("history.jsonl"),
+        &fill(&fixture("claude/worktree/history.jsonl"), repo, when),
+    );
+    put(
+        &home
+            .join("projects")
+            .join("-fixture-worktree")
+            .join(format!("{FIXTURE_WORKTREE_SESSION}.jsonl")),
+        &fill(&fixture("claude/worktree/transcript.jsonl"), repo, when),
+    );
+    std::env::set_var("MADELOG_CLAUDE_HOME", home);
+    std::env::remove_var("MADELOG_CLAUDE_PROJECTS_DIR");
+    dir
 }
