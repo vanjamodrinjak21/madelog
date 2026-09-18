@@ -57,13 +57,14 @@ Everything else (`madelog log`, `madelog verify`, `madelog export`, `madelog hid
 ## Repository layout
 
 ```
-cli/        Rust crate `madelog`: the binary and the library the tests drive
-server/     Go service `madelog-server`: stores published pages, roots and signatures
-landing/    Next.js site for madelog.app, statically exported, including the docs at /docs/
-schema/     event.schema.json, the event model both the CLI and the server validate against
-docs/       specs and implementation plans
+cli/        Rust CLI `madelog`
+server/     Go API (`madelog-server`)
+schema/     event JSON Schema shared by both
 packaging/  Homebrew formula and winget manifest templates
+.github/    CI and release workflows
 ```
+
+The website, design assets and internal documents are maintained outside this repository.
 
 ## Development
 
@@ -78,16 +79,10 @@ cargo test
 cd server
 make lint
 go test ./...
-
-# Landing and docs
-cd landing
-pnpm install
-pnpm lint
-pnpm build
 ```
 
 `server/Makefile` also has `make db-up` and `make test-db` to run the Go suite against a local
-Postgres in Docker. CI runs all three suites on every push and pull request.
+Postgres in Docker. CI runs both suites on every push and pull request.
 
 Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
