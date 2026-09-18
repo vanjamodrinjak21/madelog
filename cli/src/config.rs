@@ -51,7 +51,7 @@ impl Default for Llm {
 /// Where `madelog publish` sends the page. The default is the hosted server as
 /// it is deployed today; `madelog.app` serves the site and the install scripts
 /// and will take this over once it has a custom domain (`docs/deploy.md`).
-pub const DEFAULT_SERVER_URL: &str = "https://popserver-production.up.railway.app";
+pub const DEFAULT_SERVER_URL: &str = "https://madelog-server-production.up.railway.app";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
