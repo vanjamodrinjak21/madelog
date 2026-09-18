@@ -1,3 +1,13 @@
+# Only the buildable, open-sourceable parts of madelog are tracked:
+# cli/, server/, schema/, packaging/, .github/, README, LICENSE, CONTRIBUTING.
+# Everything below stays private and out of git.
+/.claude/
+/.remember/
+/landing/
+/design/
+/docs/
+/PRD*
+*.pdf
 # Rust
 /cli/target/
 /target/
@@ -12,5 +22,3 @@ node_modules/
 .env.*
 # macOS
 .DS_Store
-# Session memory
-.remember/
