@@ -1,7 +1,7 @@
 mod common;
 
 use common::*;
-use pop::event::{CommitPayload, EventKind, FileStatus};
+use madelog::event::{CommitPayload, EventKind, FileStatus};
 
 fn commit_payloads(repo: &TestRepo) -> Vec<CommitPayload> {
     events(repo)
@@ -14,11 +14,11 @@ fn commit_payloads(repo: &TestRepo) -> Vec<CommitPayload> {
 #[test]
 fn hook_records_a_commit_with_stats_excerpt_and_no_previous_gap() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
     repo.write("src/main.rs", "fn main() {\n    println!(\"one\");\n}\n");
     let sha = repo.commit_all("feat: first light");
 
-    pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
 
     let commits = commit_payloads(&repo);
     assert_eq!(commits.len(), 1);
@@ -50,14 +50,14 @@ fn hook_records_a_commit_with_stats_excerpt_and_no_previous_gap() {
 #[test]
 fn hook_records_seconds_since_the_previous_commit_event() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
     repo.write("a.txt", "one\n");
     repo.commit_all("first");
-    pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
 
     repo.write("a.txt", "one\ntwo\n");
     repo.commit_all("second");
-    pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
 
     let commits = commit_payloads(&repo);
     assert_eq!(commits.len(), 2);
@@ -72,12 +72,12 @@ fn hook_records_seconds_since_the_previous_commit_event() {
 #[test]
 fn hook_records_each_commit_only_once() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
     repo.write("a.txt", "one\n");
     repo.commit_all("first");
 
-    pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
-    pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
 
     assert_eq!(commit_payloads(&repo).len(), 1);
 }
@@ -85,8 +85,8 @@ fn hook_records_each_commit_only_once() {
 #[test]
 fn hook_omits_excerpts_for_ignored_and_redacted_paths() {
     let repo = init_repo();
-    init_pop(&repo);
-    pop::run_in(
+    init_madelog(&repo);
+    madelog::run_in(
         repo.root(),
         &["config", "set", "privacy.redact", "^src/secret\\.rs$"],
     )
@@ -98,7 +98,7 @@ fn hook_omits_excerpts_for_ignored_and_redacted_paths() {
     repo.write("secrets/token.txt", "sk-live-abc\n");
     repo.commit_all_forcing("chore: add sources", &["secrets/token.txt"]);
 
-    pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
 
     let c = commit_payloads(&repo).pop().unwrap();
     let by = |p: &str| {
@@ -132,11 +132,11 @@ fn hook_omits_excerpts_for_ignored_and_redacted_paths() {
 #[test]
 fn hook_omits_excerpts_for_binary_files() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
     std::fs::write(repo.path("logo.png"), [0u8, 1, 2, 0, 3, 255, 0, 9]).unwrap();
     repo.commit_all("chore: add logo");
 
-    pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
 
     let c = commit_payloads(&repo).pop().unwrap();
     let f = c.files.iter().find(|f| f.path == "logo.png").unwrap();
@@ -146,12 +146,12 @@ fn hook_omits_excerpts_for_binary_files() {
 #[test]
 fn hook_truncates_long_excerpts_to_twenty_lines() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
     let big: String = (0..200).map(|i| format!("line {i}\n")).collect();
     repo.write("big.txt", &big);
     repo.commit_all("feat: big file");
 
-    pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
 
     let c = commit_payloads(&repo).pop().unwrap();
     let excerpt = c.files[0].diff_excerpt.as_deref().unwrap();
@@ -161,22 +161,22 @@ fn hook_truncates_long_excerpts_to_twenty_lines() {
 #[test]
 fn hook_records_no_ai_sessions_until_the_git_ai_reader_lands() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
     repo.write("a.txt", "one\n");
     repo.commit_all("first");
 
-    pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
 
     assert!(!events(&repo).iter().any(|e| e.kind == EventKind::AiSession));
 }
 
 #[test]
-fn hook_never_fails_even_without_pop_init() {
+fn hook_never_fails_even_without_madelog_init() {
     let repo = init_repo();
     isolate_device_key();
     repo.write("a.txt", "one\n");
     repo.commit_all("first");
 
-    pop::run_in(repo.root(), &["hook", "post-commit"]).expect("hook must not fail the commit");
-    assert!(!repo.path(".pop/log.db").exists());
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).expect("hook must not fail the commit");
+    assert!(!repo.path(".madelog/log.db").exists());
 }

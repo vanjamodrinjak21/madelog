@@ -1,4 +1,4 @@
-//! `pop hide` — keep one AI session off the page without removing it from the
+//! `madelog hide` — keep one AI session off the page without removing it from the
 //! chain. The page says "1 session hidden".
 
 use anyhow::{bail, Result};

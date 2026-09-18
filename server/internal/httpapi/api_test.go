@@ -15,14 +15,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pop-dev/popserver/internal/httpapi"
-	"github.com/pop-dev/popserver/internal/sign"
-	"github.com/pop-dev/popserver/internal/slug"
-	"github.com/pop-dev/popserver/internal/store"
+	"github.com/madelog/server/internal/httpapi"
+	"github.com/madelog/server/internal/sign"
+	"github.com/madelog/server/internal/slug"
+	"github.com/madelog/server/internal/store"
 )
 
 const (
-	baseURL   = "https://pop.example"
+	baseURL   = "https://madelog.example"
 	lsSecret  = "whsec-test"
 	rootHex   = "3d9f1c0a4b5e6f708192a3b4c5d6e7f80112233445566778899aabbccddeeff0"
 	rootHexB  = "aa9f1c0a4b5e6f708192a3b4c5d6e7f80112233445566778899aabbccddeeff0"

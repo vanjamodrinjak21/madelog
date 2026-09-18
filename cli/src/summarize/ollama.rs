@@ -1,6 +1,6 @@
 //! A small client for a local Ollama, and nothing else.
 //!
-//! pop talks to `http://localhost:11434` if something is listening there. It
+//! madelog talks to `http://localhost:11434` if something is listening there. It
 //! asks for JSON, validates what comes back, and treats anything unexpected as
 //! "no model available" rather than as text worth publishing.
 
@@ -12,7 +12,7 @@ use serde::Deserialize;
 /// Where Ollama listens unless you say otherwise.
 pub const DEFAULT_HOST: &str = "http://localhost:11434";
 
-/// The model pop asks for when the config does not name one.
+/// The model madelog asks for when the config does not name one.
 pub const DEFAULT_MODEL: &str = "qwen3:4b";
 
 /// Is it alive? One second is long enough to answer on localhost.
@@ -35,7 +35,7 @@ happened, what was decided, what stood out.";
 /// Which host to talk to: the config key if the config has one, then
 /// `OLLAMA_HOST`, then localhost.
 pub fn host(config: &crate::config::Config) -> String {
-    // `llm.host` is not a key pop v1 writes; reading it through `get` means a
+    // `llm.host` is not a key madelog v1 writes; reading it through `get` means a
     // later version can add it without this file changing.
     let configured = config.get("llm.host").ok().filter(|v| !v.trim().is_empty());
     let raw = configured

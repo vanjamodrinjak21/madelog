@@ -65,18 +65,18 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: pop
-          POSTGRES_PASSWORD: pop
-          POSTGRES_DB: pop
+          POSTGRES_USER: madelog
+          POSTGRES_PASSWORD: madelog
+          POSTGRES_DB: madelog
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U pop -d pop"
+          --health-cmd "pg_isready -U madelog -d madelog"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://pop:pop@localhost:5432/pop?sslmode=disable
+      DATABASE_URL: postgres://madelog:madelog@localhost:5432/madelog?sslmode=disable
     steps:
       - uses: actions/checkout@v4
 

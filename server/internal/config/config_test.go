@@ -4,8 +4,8 @@ import "testing"
 
 func TestLoadDefaults(t *testing.T) {
 	env := map[string]string{
-		"DATABASE_URL":    "postgres://pop:pop@localhost:5432/pop",
-		"PUBLIC_BASE_URL": "https://pop.example/",
+		"DATABASE_URL":    "postgres://madelog:madelog@localhost:5432/madelog",
+		"PUBLIC_BASE_URL": "https://madelog.example/",
 	}
 	cfg, err := load(func(k string) string { return env[k] })
 	if err != nil {
@@ -14,7 +14,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ListenAddr != ":8080" {
 		t.Errorf("ListenAddr = %q, want :8080", cfg.ListenAddr)
 	}
-	if cfg.PublicBaseURL != "https://pop.example" {
+	if cfg.PublicBaseURL != "https://madelog.example" {
 		t.Errorf("trailing slash not trimmed: %q", cfg.PublicBaseURL)
 	}
 	if cfg.LemonSqueezySecret != "" {
@@ -27,7 +27,7 @@ func TestLoadDefaults(t *testing.T) {
 
 func TestLoadRequiresDatabaseURLAndBaseURL(t *testing.T) {
 	cases := map[string]map[string]string{
-		"no database url": {"PUBLIC_BASE_URL": "https://pop.example"},
+		"no database url": {"PUBLIC_BASE_URL": "https://madelog.example"},
 		"no base url":     {"DATABASE_URL": "postgres://x"},
 		"nothing":         {},
 	}

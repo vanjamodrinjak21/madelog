@@ -15,14 +15,14 @@ COPY . .
 # db/embed.go, which is why nothing else needs to be copied into the runtime
 # image.
 ENV CGO_ENABLED=0
-RUN go build -trimpath -ldflags="-s -w" -o /out/popserver ./cmd/popserver
+RUN go build -trimpath -ldflags="-s -w" -o /out/madelog-server ./cmd/madelog-server
 
 FROM gcr.io/distroless/static-debian12:nonroot
 
-COPY --from=build /out/popserver /popserver
+COPY --from=build /out/madelog-server /madelog-server
 
 ENV LISTEN_ADDR=:8080
 EXPOSE 8080
 USER nonroot:nonroot
 
-ENTRYPOINT ["/popserver"]
+ENTRYPOINT ["/madelog-server"]

@@ -10,10 +10,10 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use common::*;
-use pop::event::{AiSessionPayload, EventKind};
-use pop::gitai::note::{self, Route};
-use pop::gitai::{self, prompt};
-use pop::gitrepo::ExcerptFilter;
+use madelog::event::{AiSessionPayload, EventKind};
+use madelog::gitai::note::{self, Route};
+use madelog::gitai::{self, prompt};
+use madelog::gitrepo::ExcerptFilter;
 use tempfile::TempDir;
 
 // ---------------------------------------------------------------------------
@@ -36,16 +36,16 @@ fn isolate_claude_projects() -> &'static Path {
     dir.path()
 }
 
-/// Put a device key in the isolated config dir before any `pop init` runs.
+/// Put a device key in the isolated config dir before any `madelog init` runs.
 ///
-/// `DeviceKey::load_or_create` is check-then-write, so two `pop init` calls
+/// `DeviceKey::load_or_create` is check-then-write, so two `madelog init` calls
 /// in parallel can read a half-written key. Planting a valid one first means
 /// neither of this binary's inits ever has to create it.
 fn plant_device_key() {
     static ONCE: OnceLock<()> = OnceLock::new();
     ONCE.get_or_init(|| {
         isolate_device_key();
-        let dir = std::env::var_os(pop::keys::CONFIG_DIR_ENV).expect("isolated config dir");
+        let dir = std::env::var_os(madelog::keys::CONFIG_DIR_ENV).expect("isolated config dir");
         let path = Path::new(&dir).join("device.key");
         if !path.exists() {
             std::fs::write(&path, format!("{}\n", "11".repeat(32))).unwrap();
@@ -534,12 +534,12 @@ fn the_hook_records_ai_sessions_when_the_intent_opted_in() {
     isolate_claude_projects();
     plant_device_key();
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
     repo.write("a.txt", "one\n");
     let sha = repo.commit_all("first");
     write_note(&repo, &sha, &fixture("mixed-ai-human-legacy.note"));
 
-    pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
 
     let recorded: Vec<AiSessionPayload> = events(&repo)
         .into_iter()
@@ -560,7 +560,7 @@ fn the_hook_records_no_ai_sessions_when_the_intent_opted_out() {
     isolate_claude_projects();
     plant_device_key();
     let repo = init_repo();
-    pop::run_capture(
+    madelog::run_capture(
         repo.root(),
         &[
             "init",
@@ -580,7 +580,7 @@ fn the_hook_records_no_ai_sessions_when_the_intent_opted_out() {
     let sha = repo.commit_all("first");
     write_note(&repo, &sha, &fixture("mixed-ai-human-legacy.note"));
 
-    pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
 
     assert!(
         !events(&repo).iter().any(|e| e.kind == EventKind::AiSession),

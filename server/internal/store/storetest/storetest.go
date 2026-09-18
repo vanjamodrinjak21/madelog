@@ -12,7 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/pop-dev/popserver/internal/store"
+	"github.com/madelog/server/internal/store"
 )
 
 // Run executes the conformance suite. newStore must return a store with no

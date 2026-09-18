@@ -1,27 +1,27 @@
-//! `pop analyze` over a real repository: the hook records the commits, the
+//! `madelog analyze` over a real repository: the hook records the commits, the
 //! rules read them back, and running twice records nothing new.
 
 mod common;
 
 use common::*;
-use pop::event::{AiSessionFile, AiSessionPayload, EventKind, PatternPayload, Payload};
+use madelog::event::{AiSessionFile, AiSessionPayload, EventKind, PatternPayload, Payload};
 
 fn hook(repo: &TestRepo) {
-    pop::run_in(repo.root(), &["hook", "post-commit"]).expect("post-commit hook");
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).expect("post-commit hook");
 }
 
 fn analyze(repo: &TestRepo) -> String {
-    pop::run_capture(repo.root(), &["analyze"]).expect("pop analyze")
+    madelog::run_capture(repo.root(), &["analyze"]).expect("madelog analyze")
 }
 
 fn analyze_json(repo: &TestRepo) -> String {
-    pop::run_capture(repo.root(), &["analyze", "--json"]).expect("pop analyze --json")
+    madelog::run_capture(repo.root(), &["analyze", "--json"]).expect("madelog analyze --json")
 }
 
 /// Git AI is task B's job; here we put a session in the log by hand so the
 /// `fix_after_ai` rule has something to see.
 fn record_ai_session(repo: &TestRepo, sha: &str, path: &str, ai_lines: u64, reworked: u64) {
-    let store = pop::store::Store::open(&repo.path(".pop/log.db")).unwrap();
+    let store = madelog::store::Store::open(&repo.path(".madelog/log.db")).unwrap();
     store
         .append_payload(
             Some(sha),
@@ -58,7 +58,7 @@ fn lines(n: usize, word: &str) -> String {
 /// opens a new directory.
 fn busy_repo() -> TestRepo {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
 
     // 1. the model writes a parser, 2. a human fixes it.
     repo.write("src/parse.rs", &lines(80, "parse"));
@@ -96,7 +96,7 @@ fn busy_repo() -> TestRepo {
     hook(&repo);
 
     // 7. a decision, then a directory nobody had touched.
-    pop::run_capture(repo.root(), &["note", "move the storage behind a trait"]).unwrap();
+    madelog::run_capture(repo.root(), &["note", "move the storage behind a trait"]).unwrap();
     repo.write("src/store/mod.rs", &lines(20, "store"));
     repo.write("src/store/sqlite.rs", &lines(30, "sqlite"));
     repo.commit_all("feat: the store module");
@@ -165,7 +165,7 @@ fn analyze_is_idempotent() {
     assert_eq!(patterns_in(&repo).len(), 3);
 
     // And the chain still adds up after analysis appended to it.
-    let verified = pop::run_capture(repo.root(), &["verify"]).unwrap();
+    let verified = madelog::run_capture(repo.root(), &["verify"]).unwrap();
     assert!(verified.contains("chain ok"), "{verified}");
 }
 
@@ -213,7 +213,7 @@ fn moment_references_point_at_real_events() {
 #[test]
 fn a_quiet_repository_has_nothing_to_report() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
     repo.write("README.md", "# a project\n");
     repo.commit_all("docs: readme");
     hook(&repo);
@@ -226,11 +226,11 @@ fn a_quiet_repository_has_nothing_to_report() {
 }
 
 #[test]
-fn analyze_needs_pop_init_first() {
+fn analyze_needs_madelog_init_first() {
     let repo = init_repo();
     isolate_device_key();
 
-    let err = pop::run_capture(repo.root(), &["analyze"]).unwrap_err();
+    let err = madelog::run_capture(repo.root(), &["analyze"]).unwrap_err();
 
-    assert!(err.to_string().contains("pop init"), "{err}");
+    assert!(err.to_string().contains("madelog init"), "{err}");
 }

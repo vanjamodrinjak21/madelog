@@ -304,7 +304,7 @@ impl Note {
 
 /// Parse a note blob.
 ///
-/// Errors describe a note pop cannot read at all. A key it cannot resolve is
+/// Errors describe a note madelog cannot read at all. A key it cannot resolve is
 /// not an error — see [`Note::unknown_keys`].
 pub fn parse(blob: &str) -> Result<Note> {
     let (attestations, json) = split(blob)?;

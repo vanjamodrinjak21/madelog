@@ -4,7 +4,7 @@
 //! - [`PageContext`] mirrors the "Shared page context" JSON in the plan.
 //! - [`build_context`] derives it from the event log and config.
 //! - [`render`] renders the Tera template to a single self-contained HTML string.
-//! - [`render_local`] writes `.pop/site/index.html` and returns its path.
+//! - [`render_local`] writes `.madelog/site/index.html` and returns its path.
 //!
 //! Everything the page can show has to be in [`PageContext`] first. The
 //! template has no access to the log, so a private decision or a redacted
@@ -115,13 +115,13 @@ pub struct PageContext {
     pub badge: Badge,
 }
 
-/// Build the page context from the repo's `.pop` log.
+/// Build the page context from the repo's `.madelog` log.
 pub fn build_context(root: &Path, published: Option<Published>) -> Result<PageContext> {
-    let pop_dir = root.join(".pop");
-    let store = Store::open(&pop_dir.join("log.db"))?;
+    let madelog_dir = root.join(".madelog");
+    let store = Store::open(&madelog_dir.join("log.db"))?;
     let chain_root = store.root()?;
     let events = store.all()?;
-    let config = Config::load(&pop_dir.join("config.toml"))?;
+    let config = Config::load(&madelog_dir.join("config.toml"))?;
 
     let first_ts = events.first().map(|e| e.ts.clone());
     let last_ts = events.last().map(|e| e.ts.clone());
@@ -156,11 +156,11 @@ pub fn render(ctx: &PageContext) -> Result<String> {
     tmpl::render(ctx)
 }
 
-/// Render and write `.pop/site/index.html`, returning its path.
+/// Render and write `.madelog/site/index.html`, returning its path.
 pub fn render_local(root: &Path, published: Option<Published>) -> Result<PathBuf> {
     let ctx = build_context(root, published)?;
     let html = render(&ctx)?;
-    let dir = root.join(".pop").join("site");
+    let dir = root.join(".madelog").join("site");
     std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
     let path = dir.join("index.html");
     std::fs::write(&path, html).with_context(|| format!("writing {}", path.display()))?;

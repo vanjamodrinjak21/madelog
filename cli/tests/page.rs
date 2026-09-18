@@ -5,9 +5,9 @@ mod common;
 
 use std::path::{Path, PathBuf};
 
-use pop::event::{AiSessionFile, AiSessionPayload, Payload};
-use pop::page::{self, PageContext, Published};
-use pop::store::Store;
+use madelog::event::{AiSessionFile, AiSessionPayload, Payload};
+use madelog::page::{self, PageContext, Published};
+use madelog::store::Store;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -62,7 +62,7 @@ fn assert_self_contained(html: &str) {
 #[test]
 fn design_mock_context_deserialises_and_renders() {
     let ctx = mock_context();
-    assert_eq!(ctx.project.name, "pop");
+    assert_eq!(ctx.project.name, "madelog");
     assert_eq!(ctx.stats.commits, 45);
     assert_eq!(ctx.timeline.len(), 71);
     assert_eq!(ctx.moments.len(), 4);
@@ -73,13 +73,13 @@ fn design_mock_context_deserialises_and_renders() {
     assert_self_contained(&html);
 
     // 1. intent and what was delivered
-    assert!(html.contains("<title>pop · how it came together</title>"));
+    assert!(html.contains("<title>madelog · how it came together</title>"));
     assert!(html.contains(
         "A Rust CLI that records how a project came together and turns it into one page"
     ));
     assert!(html.contains("Students and juniors applying for a first job"));
     assert!(html.contains("Built over 13 working days between 3 Sep 2026 and 17 Sep 2026"));
-    assert!(html.contains("github.com/vanjamodrinjak/pop"));
+    assert!(html.contains("github.com/vanjamodrinjak/madelog"));
     assert!(html.contains("<span>claude-code</span>"));
 
     // 2. timeline: rendered server-side, no JS needed to read it
@@ -113,7 +113,7 @@ fn design_mock_context_deserialises_and_renders() {
     // 5. badge
     assert!(html.contains("Verified record"));
     assert!(html.contains("8a1f5c0e2b7d4e6f9a3c1b8d7e5f2a4c6b9d0e1f3a5c7b9d2e4f6a8c0b1d3e5c3e7"));
-    assert!(html.contains("https://pop.dev/v1/verify/quiet-heron-k7m2"));
+    assert!(html.contains("https://madelog.app/v1/verify/quiet-heron-k7m2"));
     assert!(html.contains("1 session hidden"));
     assert!(!html.contains("Not yet published"));
 
@@ -163,8 +163,8 @@ fn no_moments_at_all_still_renders() {
 /// AI session that gets hidden, analysis and summaries.
 fn seeded_repo() -> common::TestRepo {
     let repo = common::init_repo();
-    common::init_pop(&repo);
-    pop::run_capture(repo.root(), &["config", "set", "llm.provider", "none"]).unwrap();
+    common::init_madelog(&repo);
+    madelog::run_capture(repo.root(), &["config", "set", "llm.provider", "none"]).unwrap();
 
     let mut shas = Vec::new();
     for (n, message) in [
@@ -181,11 +181,11 @@ fn seeded_repo() -> common::TestRepo {
             &format!("// {message}\nfn f{n}() {{ println!(\"{n}\"); }}\n"),
         );
         let sha = repo.commit_all(message);
-        pop::run_capture(repo.root(), &["hook", "post-commit"]).unwrap();
+        madelog::run_capture(repo.root(), &["hook", "post-commit"]).unwrap();
         shas.push(sha);
     }
 
-    pop::run_capture(
+    madelog::run_capture(
         repo.root(),
         &[
             "note",
@@ -193,7 +193,7 @@ fn seeded_repo() -> common::TestRepo {
         ],
     )
     .unwrap();
-    pop::run_capture(
+    madelog::run_capture(
         repo.root(),
         &[
             "note",
@@ -204,7 +204,7 @@ fn seeded_repo() -> common::TestRepo {
     .unwrap();
 
     // An AI session anchored to the second commit, which we then hide.
-    let store = Store::open(&repo.path(".pop/log.db")).unwrap();
+    let store = Store::open(&repo.path(".madelog/log.db")).unwrap();
     let session = store
         .append_payload(
             Some(&shas[1]),
@@ -225,9 +225,9 @@ fn seeded_repo() -> common::TestRepo {
         .unwrap();
     drop(store);
 
-    pop::run_capture(repo.root(), &["analyze"]).unwrap();
-    pop::run_capture(repo.root(), &["summarize"]).unwrap();
-    pop::run_capture(repo.root(), &["hide", &session.id]).unwrap();
+    madelog::run_capture(repo.root(), &["analyze"]).unwrap();
+    madelog::run_capture(repo.root(), &["summarize"]).unwrap();
+    madelog::run_capture(repo.root(), &["hide", &session.id]).unwrap();
     repo
 }
 
@@ -235,7 +235,7 @@ fn seeded_repo() -> common::TestRepo {
 fn render_local_writes_a_page_that_keeps_its_secrets() {
     let repo = seeded_repo();
     let path = page::render_local(repo.root(), None).expect("render_local");
-    assert_eq!(path, repo.path(".pop/site/index.html"));
+    assert_eq!(path, repo.path(".madelog/site/index.html"));
     assert!(path.exists(), "the file is on disk");
 
     let html = std::fs::read_to_string(&path).unwrap();
@@ -266,10 +266,10 @@ fn render_local_writes_a_page_that_keeps_its_secrets() {
 
     // not published yet
     assert!(html.contains("Not yet published"));
-    assert!(html.contains("pop publish --local"));
+    assert!(html.contains("madelog publish --local"));
 
     // the chain root
-    let root = Store::open(&repo.path(".pop/log.db"))
+    let root = Store::open(&repo.path(".madelog/log.db"))
         .unwrap()
         .root()
         .unwrap();
@@ -331,22 +331,22 @@ fn a_published_page_shows_the_badge() {
     let repo = seeded_repo();
     let published = Published {
         slug: "quiet-heron-k7m2".into(),
-        url: "https://pop.dev/p/quiet-heron-k7m2".into(),
+        url: "https://madelog.app/p/quiet-heron-k7m2".into(),
         received_at: "2026-09-17T14:02:41Z".into(),
-        verify_url: "https://pop.dev/v1/verify/quiet-heron-k7m2".into(),
+        verify_url: "https://madelog.app/v1/verify/quiet-heron-k7m2".into(),
     };
     let path = page::render_local(repo.root(), Some(published)).expect("render_local");
     let html = std::fs::read_to_string(path).unwrap();
     assert!(html.contains("Verified record"));
-    assert!(html.contains("https://pop.dev/v1/verify/quiet-heron-k7m2"));
-    assert!(html.contains("pop.dev/p/quiet-heron-k7m2"));
+    assert!(html.contains("https://madelog.app/v1/verify/quiet-heron-k7m2"));
+    assert!(html.contains("madelog.app/p/quiet-heron-k7m2"));
     assert!(!html.contains("Not yet published"));
 }
 
 #[test]
 fn an_empty_log_still_renders() {
     let repo = common::init_repo();
-    common::init_pop(&repo);
+    common::init_madelog(&repo);
     let path = page::render_local(repo.root(), None).expect("render_local on a bare log");
     let html = std::fs::read_to_string(path).unwrap();
     assert_html_basics(&html);

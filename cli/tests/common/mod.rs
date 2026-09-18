@@ -1,5 +1,5 @@
 //! Shared helpers for the integration tests: throwaway git repos and an
-//! isolated device-key directory so tests never touch `~/.config/pop`.
+//! isolated device-key directory so tests never touch `~/.config/madelog`.
 
 #![allow(dead_code)]
 
@@ -10,13 +10,13 @@ use tempfile::TempDir;
 
 static KEY_DIR: OnceLock<TempDir> = OnceLock::new();
 
-/// Point `pop` at a throwaway config dir for the whole test binary.
+/// Point `madelog` at a throwaway config dir for the whole test binary.
 ///
 /// Every test in a binary gets the same directory, so repeatedly setting the
 /// variable is a no-op rather than a race.
 pub fn isolate_device_key() {
     let dir = KEY_DIR.get_or_init(|| TempDir::new().expect("temp key dir"));
-    std::env::set_var("POP_CONFIG_DIR", dir.path());
+    std::env::set_var("MADELOG_CONFIG_DIR", dir.path());
 }
 
 pub struct TestRepo {
@@ -88,10 +88,10 @@ pub fn init_repo() -> TestRepo {
     TestRepo { dir }
 }
 
-/// A repo that already has `pop init` run against it, non-interactively.
-pub fn init_pop(repo: &TestRepo) {
+/// A repo that already has `madelog init` run against it, non-interactively.
+pub fn init_madelog(repo: &TestRepo) {
     isolate_device_key();
-    pop::run_capture(
+    madelog::run_capture(
         repo.root(),
         &[
             "init",
@@ -105,14 +105,14 @@ pub fn init_pop(repo: &TestRepo) {
             "--yes",
         ],
     )
-    .expect("pop init");
+    .expect("madelog init");
 }
 
-pub fn events(repo: &TestRepo) -> Vec<pop::event::Event> {
-    let store = pop::store::Store::open(&repo.path(".pop/log.db")).unwrap();
+pub fn events(repo: &TestRepo) -> Vec<madelog::event::Event> {
+    let store = madelog::store::Store::open(&repo.path(".madelog/log.db")).unwrap();
     store.all().unwrap()
 }
 
 pub fn exit_code(err: &anyhow::Error) -> Option<i32> {
-    err.downcast_ref::<pop::ExitError>().map(|e| e.code)
+    err.downcast_ref::<madelog::ExitError>().map(|e| e.code)
 }

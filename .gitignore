@@ -5,8 +5,8 @@
 /server/bin/
 # Node
 node_modules/
-# Local pop data (dogfooding this repo)
-.pop/
+# Local madelog data (dogfooding this repo)
+.madelog/
 # Env / secrets
 .env
 .env.*

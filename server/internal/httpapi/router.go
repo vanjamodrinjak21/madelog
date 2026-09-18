@@ -15,7 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/pop-dev/popserver/internal/store"
+	"github.com/madelog/server/internal/store"
 )
 
 // DefaultMaxHTMLBytes is the largest page body we accept, per spec section 5.
@@ -24,7 +24,7 @@ const DefaultMaxHTMLBytes = 2 << 20 // 2 MiB
 // Config is everything the API needs from the environment.
 type Config struct {
 	// PublicBaseURL is the origin the returned page URLs are built from,
-	// for example https://pop.example. Required.
+	// for example https://madelog.example. Required.
 	PublicBaseURL string
 	// LemonSqueezySecret signs the billing webhook. Empty means the webhook
 	// is not configured and answers 503.

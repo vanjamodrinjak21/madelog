@@ -3,7 +3,7 @@
 //! Four rules run over the ordered `commit` and `ai_session` events and
 //! produce [`PatternPayload`]s. Everything here is pure and deterministic:
 //! the same events always give the same patterns in the same order, which is
-//! what lets `pop analyze` run twice without recording anything new.
+//! what lets `madelog analyze` run twice without recording anything new.
 
 use std::collections::BTreeSet;
 
@@ -107,7 +107,7 @@ impl Commit {
 /// The ordered commits of a log, each carrying its AI sessions.
 ///
 /// Events whose timestamp or payload cannot be read are skipped rather than
-/// failing the whole analysis — pop never refuses to look at a log.
+/// failing the whole analysis — madelog never refuses to look at a log.
 pub fn commits(events: &[Event]) -> Vec<Commit> {
     let mut out: Vec<Commit> = Vec::new();
     for event in events {
@@ -585,7 +585,7 @@ pub(crate) mod testdata {
             )
         }
 
-        /// A `pop note`.
+        /// A `madelog note`.
         pub fn decision(&mut self, secs: i64, text: &str, private: bool) -> String {
             self.push(
                 at(secs),
@@ -731,7 +731,7 @@ mod tests {
         log.commit(
             0,
             "a1b2c3d",
-            "Revert something from before pop",
+            "Revert something from before madelog",
             vec![file("a.rs", 0, 9)],
         );
 

@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use pop::event::*;
+use madelog::event::*;
 
 fn schema() -> serde_json::Value {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -112,7 +112,7 @@ fn an_event_carries_exactly_the_schema_properties() {
     assert_eq!(schema["additionalProperties"], serde_json::json!(false));
 
     let dir = tempfile::TempDir::new().unwrap();
-    let store = pop::store::Store::open(&dir.path().join("log.db")).unwrap();
+    let store = madelog::store::Store::open(&dir.path().join("log.db")).unwrap();
     for payload in samples() {
         let event = store
             .append_payload(Some(&"a".repeat(40)), &payload)

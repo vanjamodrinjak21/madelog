@@ -207,7 +207,7 @@ fn bucket_with(events: &[Event], to_date: impl Fn(&str) -> Option<NaiveDate>) ->
         .find_map(|e| to_date(&e.ts))
         .map(monday_of)
     else {
-        // No commits, no weeks: pop counts weeks from the first commit.
+        // No commits, no weeks: madelog counts weeks from the first commit.
         return Vec::new();
     };
 

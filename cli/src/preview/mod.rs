@@ -118,9 +118,9 @@ pub struct Model {
 }
 
 impl Model {
-    /// Build the screen from the log at `<root>/.pop/log.db`.
+    /// Build the screen from the log at `<root>/.madelog/log.db`.
     pub fn build(root: &Path) -> Result<Model> {
-        let store = crate::store::Store::open(&root.join(".pop").join("log.db"))?;
+        let store = crate::store::Store::open(&root.join(".madelog").join("log.db"))?;
         let events = store.all()?;
         Ok(Model::from_events(
             &root
@@ -225,7 +225,7 @@ pub fn thin_warning(event_count: usize) -> Option<String> {
     }
     Some(format!(
         "this project has {} so far, and a page built from fewer than {THIN_EVENT_COUNT} events \
-         says very little. It will still publish. Keep committing and run `pop publish` again later.",
+         says very little. It will still publish. Keep committing and run `madelog publish` again later.",
         plural(event_count, "event"),
     ))
 }
@@ -405,7 +405,7 @@ pub trait Host {
     fn reload(&mut self) -> Result<Model>;
 }
 
-/// The real host: `pop hide` and `pop summary edit`, exactly as the commands
+/// The real host: `madelog hide` and `madelog summary edit`, exactly as the commands
 /// run them, with their output swallowed so it cannot land on the screen.
 pub struct LogHost {
     root: PathBuf,
@@ -589,7 +589,7 @@ impl Preview for Scripted {
     }
 }
 
-/// The preview `pop publish` uses: the real terminal one.
+/// The preview `madelog publish` uses: the real terminal one.
 pub fn default_preview() -> Box<dyn Preview> {
     Box::new(tui::Tui::new())
 }
@@ -605,7 +605,7 @@ mod tests {
 
     fn store() -> (tempfile::TempDir, Store) {
         let dir = tempfile::TempDir::new().unwrap();
-        let store = Store::open(&dir.path().join(".pop").join("log.db")).unwrap();
+        let store = Store::open(&dir.path().join(".madelog").join("log.db")).unwrap();
         (dir, store)
     }
 
@@ -710,14 +710,14 @@ mod tests {
             Ok(())
         }
         fn reload(&mut self) -> Result<Model> {
-            Ok(Model::from_events("pop", &self.store.all()?))
+            Ok(Model::from_events("madelog", &self.store.all()?))
         }
     }
 
     #[test]
     fn the_timeline_holds_commits_decisions_and_sessions_but_not_private_notes() {
         let (_d, store) = populated();
-        let model = Model::from_events("pop", &store.all().unwrap());
+        let model = Model::from_events("madelog", &store.all().unwrap());
         let kinds: Vec<ItemKind> = model.items.iter().map(|i| i.kind).collect();
         assert_eq!(
             kinds,
@@ -737,7 +737,7 @@ mod tests {
     #[test]
     fn each_kind_gets_the_detail_the_spec_asks_for() {
         let (_d, store) = populated();
-        let model = Model::from_events("pop", &store.all().unwrap());
+        let model = Model::from_events("madelog", &store.all().unwrap());
         let commit = model.items[0].detail.join("\n");
         assert!(commit.contains("feat: add the store"), "{commit}");
         assert!(commit.contains("src/store.rs"), "{commit}");
@@ -755,7 +755,7 @@ mod tests {
     #[test]
     fn j_and_k_move_the_cursor_and_stop_at_the_ends() {
         let (_d, store) = populated();
-        let mut model = Model::from_events("pop", &store.all().unwrap());
+        let mut model = Model::from_events("madelog", &store.all().unwrap());
         let mut host = FakeHost {
             store: Store::open(store.path()).unwrap(),
             hidden: vec![],
@@ -773,7 +773,7 @@ mod tests {
     #[test]
     fn h_hides_the_selected_session_and_the_screen_shows_it_at_once() {
         let (_d, store) = populated();
-        let mut model = Model::from_events("pop", &store.all().unwrap());
+        let mut model = Model::from_events("madelog", &store.all().unwrap());
         let mut host = FakeHost {
             store: Store::open(store.path()).unwrap(),
             hidden: vec![],
@@ -802,7 +802,7 @@ mod tests {
     #[test]
     fn e_edits_the_selected_summary() {
         let (_d, store) = populated();
-        let mut model = Model::from_events("pop", &store.all().unwrap());
+        let mut model = Model::from_events("madelog", &store.all().unwrap());
         let mut host = FakeHost {
             store: Store::open(store.path()).unwrap(),
             hidden: vec![],
@@ -817,7 +817,7 @@ mod tests {
     #[test]
     fn enter_confirms_and_q_aborts() {
         let (_d, store) = populated();
-        let model = Model::from_events("pop", &store.all().unwrap());
+        let model = Model::from_events("madelog", &store.all().unwrap());
         let mut host = FakeHost {
             store: Store::open(store.path()).unwrap(),
             hidden: vec![],
@@ -836,7 +836,7 @@ mod tests {
     #[test]
     fn a_thin_project_is_warned_about_not_blocked() {
         let (_d, store) = populated();
-        let model = Model::from_events("pop", &store.all().unwrap());
+        let model = Model::from_events("madelog", &store.all().unwrap());
         let warning = model.thin_warning().expect("five events is thin");
         assert!(warning.contains("5 events"), "{warning}");
         assert!(warning.contains("15"), "{warning}");

@@ -1,21 +1,21 @@
 [package]
-name = "pop"
+name = "madelog"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
 description = "Record how your project came together, and prove it."
 license = "MIT"
-repository = "https://github.com/vanjamodrinjak/pop"
+repository = "https://github.com/vanjamodrinjak/madelog"
 
 # This crate is standalone; the repository root is not a cargo workspace.
 [workspace]
 
 [lib]
-name = "pop"
+name = "madelog"
 path = "src/lib.rs"
 
 [[bin]]
-name = "pop"
+name = "madelog"
 path = "src/main.rs"
 
 [dependencies]

@@ -1,65 +1,65 @@
-# pop
+# madelog
 
-pop runs alongside git and records how a project came together: the commits, the AI sessions,
+madelog runs alongside git and records how a project came together: the commits, the AI sessions,
 the one-sentence decisions you write down, and the patterns between them. Every record is
-hashed into an append-only chain in `.pop/log.db`, so the history can be verified instead of
-claimed. `pop publish` turns that log into one static page with a verification badge, which you
+hashed into an append-only chain in `.madelog/log.db`, so the history can be verified instead of
+claimed. `madelog publish` turns that log into one static page with a verification badge, which you
 send to a company in place of a portfolio.
 
-Documentation: <https://pop.dev/docs/>
+Documentation: <https://madelog.app/docs/>
 
 ## Install
 
 System-wide, the default:
 
 ```sh
-curl -fsSL https://pop.dev/install.sh | sh
+curl -fsSL https://madelog.app/install.sh | sh
 ```
 
 ```powershell
-irm https://pop.dev/install.ps1 | iex
+irm https://madelog.app/install.ps1 | iex
 ```
 
-Per project, which puts the binary in `<repo>/.pop/bin/pop` and leaves your PATH alone:
+Per project, which puts the binary in `<repo>/.madelog/bin/madelog` and leaves your PATH alone:
 
 ```sh
-curl -fsSL https://pop.dev/install.sh | sh -s -- --project
+curl -fsSL https://madelog.app/install.sh | sh -s -- --project
 ```
 
 ```powershell
-& ([scriptblock]::Create((irm https://pop.dev/install.ps1))) -Project
+& ([scriptblock]::Create((irm https://madelog.app/install.ps1))) -Project
 ```
 
-Both modes end by running `pop onboard`, which explains what pop records, checks for git,
+Both modes end by running `madelog onboard`, which explains what madelog records, checks for git,
 Git AI and Ollama, and offers to set up the repository you are in.
 
 Until the first release is tagged, build from source:
 
 ```sh
-git clone https://github.com/vanjamodrinjak/pop
-cd pop
+git clone https://github.com/vanjamodrinjak/madelog
+cd madelog
 cargo install --path cli
-pop onboard
+madelog onboard
 ```
 
 ## The three commands you use
 
 | Command | What it does |
 |---|---|
-| `pop init` | Asks what you are building, for whom, and which AI tools you use. Creates `.pop/`, installs the post-commit hook, writes the first event. |
-| `pop note "<sentence>"` | Records one decision against the current commit. Add `--private` to keep it out of the page. |
-| `pop publish` | Runs the analysis, opens the preview, renders the page, and publishes it. `--local` stops at `.pop/site/index.html`. |
+| `madelog init` | Asks what you are building, for whom, and which AI tools you use. Creates `.madelog/`, installs the post-commit hook, writes the first event. |
+| `madelog note "<sentence>"` | Records one decision against the current commit. Add `--private` to keep it out of the page. |
+| `madelog publish` | Runs the analysis, opens the preview, renders the page, and publishes it. `--local` stops at `.madelog/site/index.html`. |
 
-Everything else (`pop log`, `pop verify`, `pop export`, `pop hide`, `pop config`, `pop analyze`,
-`pop summarize`) exists for when you need it. Nothing leaves your machine until you run
-`pop publish` without `--local`.
+Everything else (`madelog log`, `madelog verify`, `madelog export`, `madelog hide`, `madelog config`, `madelog analyze`,
+`madelog summarize`) exists for when you need it. Nothing leaves your machine until you run
+`madelog publish` without `--local`.
 
 ## Repository layout
 
 ```
-cli/        Rust crate `pop`: the binary and the library the tests drive
-server/     Go service `popserver`: stores published pages, roots and signatures
-landing/    Next.js site for pop.dev, statically exported, including the docs at /docs/
+cli/        Rust crate `madelog`: the binary and the library the tests drive
+server/     Go service `madelog-server`: stores published pages, roots and signatures
+landing/    Next.js site for madelog.app, statically exported, including the docs at /docs/
 schema/     event.schema.json, the event model both the CLI and the server validate against
 docs/       specs and implementation plans
 packaging/  Homebrew formula and winget manifest templates

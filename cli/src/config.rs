@@ -1,11 +1,11 @@
-//! `.pop/config.toml` — the only knobs pop has.
+//! `.madelog/config.toml` — the only knobs madelog has.
 
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
-/// Every key `pop config get|set` accepts.
+/// Every key `madelog config get|set` accepts.
 pub const KEYS: &[&str] = &[
     "llm.provider",
     "llm.model",
@@ -48,11 +48,16 @@ impl Default for Llm {
     }
 }
 
+/// Where `madelog publish` sends the page. The default is the hosted server as
+/// it is deployed today; `madelog.app` serves the site and the install scripts
+/// and will take this over once it has a custom domain (`docs/deploy.md`).
+pub const DEFAULT_SERVER_URL: &str = "https://popserver-production.up.railway.app";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Server {
     pub url: String,
-    /// What `POST /v1/devices` called this machine. Written by `pop publish`,
+    /// What `POST /v1/devices` called this machine. Written by `madelog publish`,
     /// not by you; it is a public identifier, never a secret.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device_id: Option<String>,
@@ -65,7 +70,7 @@ pub struct Server {
 impl Default for Server {
     fn default() -> Self {
         Server {
-            url: "https://pop.dev".into(),
+            url: DEFAULT_SERVER_URL.into(),
             device_id: None,
             slug: None,
         }
@@ -106,7 +111,8 @@ impl Config {
             std::fs::create_dir_all(parent)?;
         }
         let body = toml::to_string_pretty(self).context("serialising config")?;
-        let header = "# pop configuration. `pop config set <key> <value>` edits this file.\n";
+        let header =
+            "# madelog configuration. `madelog config set <key> <value>` edits this file.\n";
         std::fs::write(path, format!("{header}{body}"))
             .with_context(|| format!("writing {}", path.display()))
     }
@@ -213,7 +219,7 @@ mod tests {
         let path = dir.path().join("config.toml");
         let mut c = Config::default();
         c.set("privacy.redact", "^secrets/, [.]env$").unwrap();
-        c.set("project.name", "pop").unwrap();
+        c.set("project.name", "madelog").unwrap();
         c.set("project.delivered_url", "https://a.test").unwrap();
         c.set("llm.remote", "yes").unwrap();
         c.save(&path).unwrap();

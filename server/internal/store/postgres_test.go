@@ -9,15 +9,15 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/pop-dev/popserver/internal/migrate"
-	"github.com/pop-dev/popserver/internal/store"
-	"github.com/pop-dev/popserver/internal/store/storetest"
+	"github.com/madelog/server/internal/migrate"
+	"github.com/madelog/server/internal/store"
+	"github.com/madelog/server/internal/store/storetest"
 )
 
 // TestPostgresStoreConformance runs the same suite as the in-memory fake
 // against a real database. It only runs when DATABASE_URL is set:
 //
-//	make db-up && DATABASE_URL=postgres://pop:pop@localhost:5432/pop?sslmode=disable go test ./...
+//	make db-up && DATABASE_URL=postgres://madelog:madelog@localhost:5432/madelog?sslmode=disable go test ./...
 func TestPostgresStoreConformance(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {

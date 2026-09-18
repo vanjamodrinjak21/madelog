@@ -1,4 +1,4 @@
-//! `pop export` — everything pop holds about you, as JSON.
+//! `madelog export` — everything madelog holds about you, as JSON.
 
 use std::path::Path;
 
@@ -21,8 +21,8 @@ pub struct Export {
     pub events: Vec<Event>,
 }
 
-pub fn build(pop_dir: &Path) -> Result<Export> {
-    let store = crate::store::Store::open(&pop_dir.join("log.db"))?;
+pub fn build(madelog_dir: &Path) -> Result<Export> {
+    let store = crate::store::Store::open(&madelog_dir.join("log.db"))?;
     let events = store.all()?;
     let intent = store
         .first_of_kind(EventKind::Intent)?
@@ -34,19 +34,19 @@ pub fn build(pop_dir: &Path) -> Result<Export> {
         version: 1,
         exported_at: crate::event::now_ts(),
         intent,
-        intent_md: std::fs::read_to_string(pop_dir.join("intent.md")).ok(),
-        config: Config::load(&pop_dir.join("config.toml"))?,
+        intent_md: std::fs::read_to_string(madelog_dir.join("intent.md")).ok(),
+        config: Config::load(&madelog_dir.join("config.toml"))?,
         root: chain::root(&events),
         events,
     })
 }
 
 pub fn run(ctx: &mut Ctx<'_>, path: Option<&str>) -> Result<()> {
-    let pop_dir = ctx.pop_dir()?;
-    if !pop_dir.join("log.db").exists() {
-        anyhow::bail!("no pop log in this repository yet — run `pop init` first");
+    let madelog_dir = ctx.madelog_dir()?;
+    if !madelog_dir.join("log.db").exists() {
+        anyhow::bail!("no madelog log in this repository yet — run `madelog init` first");
     }
-    let export = build(&pop_dir)?;
+    let export = build(&madelog_dir)?;
     let body = serde_json::to_string_pretty(&export).context("rendering the export")?;
 
     match path {

@@ -1,4 +1,4 @@
-//! `pop log` — what pop has recorded.
+//! `madelog log` — what madelog has recorded.
 
 use anyhow::{Context, Result};
 

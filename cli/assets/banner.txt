@@ -1,0 +1,4 @@
+  ┌───┐
+  │ ┌─┼─┐   madelog · Proof of Process
+  └─┼─┘ │   Records how your project came together.
+    └───┘

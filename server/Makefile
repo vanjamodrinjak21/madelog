@@ -1,4 +1,4 @@
-# popserver
+# madelog-server
 #
 #   make run     start the server against DATABASE_URL (see .env.example)
 #   make test    go test ./... (DB tests skip unless DATABASE_URL is set)
@@ -7,7 +7,7 @@
 
 GO      ?= go
 SQLC    ?= sqlc
-DB_DSN  ?= postgres://pop:pop@localhost:5432/pop?sslmode=disable
+DB_DSN  ?= postgres://madelog:madelog@localhost:5432/madelog?sslmode=disable
 
 .PHONY: run test test-db sqlc lint fmt build tidy db-up db-down up down clean help
 
@@ -17,7 +17,7 @@ run:
 	export DATABASE_URL="$${DATABASE_URL:-$(DB_DSN)}"; \
 	export PUBLIC_BASE_URL="$${PUBLIC_BASE_URL:-http://localhost:8080}"; \
 	export LOG_FORMAT="$${LOG_FORMAT:-text}"; \
-	$(GO) run ./cmd/popserver
+	$(GO) run ./cmd/madelog-server
 
 ## test: unit and handler tests; database tests skip without DATABASE_URL
 test:
@@ -41,9 +41,9 @@ lint:
 fmt:
 	gofmt -w .
 
-## build: compile the binary to ./bin/popserver
+## build: compile the binary to ./bin/madelog-server
 build:
-	$(GO) build -trimpath -o bin/popserver ./cmd/popserver
+	$(GO) build -trimpath -o bin/madelog-server ./cmd/madelog-server
 
 ## tidy: prune go.mod and go.sum
 tidy:
@@ -54,7 +54,7 @@ db-up:
 	docker compose up -d db
 	@printf 'waiting for postgres'
 	@for i in $$(seq 1 30); do \
-		if docker compose exec -T db pg_isready -U pop -d pop >/dev/null 2>&1; then echo ' ready'; exit 0; fi; \
+		if docker compose exec -T db pg_isready -U madelog -d madelog >/dev/null 2>&1; then echo ' ready'; exit 0; fi; \
 		printf '.'; sleep 1; \
 	done; echo ' timed out'; exit 1
 

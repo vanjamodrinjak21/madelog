@@ -4,7 +4,7 @@ fn main() {
     let cwd = match std::env::current_dir() {
         Ok(dir) => dir,
         Err(e) => {
-            eprintln!("pop: cannot read the current directory: {e}");
+            eprintln!("madelog: cannot read the current directory: {e}");
             std::process::exit(1);
         }
     };
@@ -16,8 +16,8 @@ fn main() {
         .collect();
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
 
-    if let Err(err) = pop::run_in(&cwd, &args) {
-        if let Some(exit) = err.downcast_ref::<pop::ExitError>() {
+    if let Err(err) = madelog::run_in(&cwd, &args) {
+        if let Some(exit) = err.downcast_ref::<madelog::ExitError>() {
             // clap already renders its own help and usage text.
             // Help and version (exit 0) belong on stdout; errors on stderr.
             if exit.code == 0 {
@@ -35,7 +35,7 @@ fn main() {
             );
             std::process::exit(exit.code);
         }
-        eprintln!("pop: {err:#}");
+        eprintln!("madelog: {err:#}");
         std::process::exit(1);
     }
 }

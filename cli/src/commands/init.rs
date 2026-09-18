@@ -1,4 +1,4 @@
-//! `pop init` — four questions, then pop is recording.
+//! `madelog init` — four questions, then madelog is recording.
 
 use std::path::{Path, PathBuf};
 
@@ -12,10 +12,10 @@ use crate::keys::DeviceKey;
 use crate::store::Store;
 use crate::Ctx;
 
-/// Marks the lines pop owns inside `.git/hooks/post-commit`.
-pub const HOOK_MARKER: &str = "# pop-cli:post-commit";
+/// Marks the lines madelog owns inside `.git/hooks/post-commit`.
+pub const HOOK_MARKER: &str = "# madelog-cli:post-commit";
 
-const HOOK_COMMENT: &str = "# pop-cli:post-commit - records this commit in .pop/log.db";
+const HOOK_COMMENT: &str = "# madelog-cli:post-commit - records this commit in .madelog/log.db";
 
 #[derive(Debug, Default, Clone)]
 pub struct Options {
@@ -48,7 +48,7 @@ impl Options {
 pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
     let repo = Repo::discover(&ctx.cwd)?;
     let workdir = repo.workdir()?;
-    let pop_dir = workdir.join(".pop");
+    let madelog_dir = workdir.join(".madelog");
 
     let Options {
         what,
@@ -78,11 +78,12 @@ pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
         None => ctx.ask_yes_no("Record AI sessions from Git AI?", true)?,
     };
 
-    std::fs::create_dir_all(&pop_dir).with_context(|| format!("creating {}", pop_dir.display()))?;
+    std::fs::create_dir_all(&madelog_dir)
+        .with_context(|| format!("creating {}", madelog_dir.display()))?;
 
-    write_intent_md(&pop_dir, &what, &for_whom, &tools, record_ai_sessions)?;
+    write_intent_md(&madelog_dir, &what, &for_whom, &tools, record_ai_sessions)?;
 
-    let config_path = pop_dir.join("config.toml");
+    let config_path = madelog_dir.join("config.toml");
     let mut config = Config::load(&config_path)?;
     if config.project.name.is_empty() {
         config.project.name = workdir
@@ -92,7 +93,7 @@ pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
     }
     config.save(&config_path)?;
 
-    let store = Store::open(&pop_dir.join("log.db"))?;
+    let store = Store::open(&madelog_dir.join("log.db"))?;
     let head = repo.head_sha()?;
     store.append_payload(
         head.as_deref(),
@@ -109,18 +110,18 @@ pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
     install_post_commit_hook(&repo.git_dir(), &hook_command)?;
     DeviceKey::load_or_create()?;
 
-    ctx.say(&format!("pop is recording in {}", workdir.display()))?;
-    ctx.say("  .pop/intent.md      what you are building, in your own words")?;
-    ctx.say("  .pop/log.db         the event log, hash chained")?;
-    ctx.say("  .pop/config.toml    settings, including privacy.redact")?;
+    ctx.say(&format!("madelog is recording in {}", workdir.display()))?;
+    ctx.say("  .madelog/intent.md      what you are building, in your own words")?;
+    ctx.say("  .madelog/log.db         the event log, hash chained")?;
+    ctx.say("  .madelog/config.toml    settings, including privacy.redact")?;
     ctx.say("Your commits are recorded from now on. Nothing leaves this machine.")?;
     ctx.blank()?;
-    ctx.say("Next: `pop note \"why you did it that way\"` after a decision.")?;
+    ctx.say("Next: `madelog note \"why you did it that way\"` after a decision.")?;
     if record_ai_sessions && which("git-ai").is_none() {
-        ctx.say(
-            "Git AI is not on your PATH, so AI sessions stay empty. Install it from \
-https://github.com/oleander/git-ai",
-        )?;
+        ctx.say(&format!(
+            "Git AI is not on your PATH, so AI sessions stay empty. Install it with: {}",
+            crate::gitai::GIT_AI_INSTALL
+        ))?;
     }
     Ok(())
 }
@@ -134,7 +135,7 @@ fn answer(ctx: &mut Ctx<'_>, given: Option<String>, yes: bool, question: &str) -
 }
 
 fn write_intent_md(
-    pop_dir: &Path,
+    madelog_dir: &Path,
     what: &str,
     for_whom: &str,
     tools: &[String],
@@ -151,31 +152,31 @@ fn write_intent_md(
          ## Who it is for\n\n{for_whom}\n\n\
          ## Tools\n\n{tools_line}\n\n\
          ## AI sessions\n\n{}\n\n\
-         Edit this file whenever the answer changes. It is yours; pop only reads it.\n",
+         Edit this file whenever the answer changes. It is yours; madelog only reads it.\n",
         if record_ai_sessions {
             "Recorded from Git AI attribution."
         } else {
             "Not recorded."
         }
     );
-    let path = pop_dir.join("intent.md");
+    let path = madelog_dir.join("intent.md");
     std::fs::write(&path, body).with_context(|| format!("writing {}", path.display()))
 }
 
-/// Which `pop` the post-commit hook should call.
+/// Which `madelog` the post-commit hook should call.
 ///
-/// A per-project install puts the binary at `<repo>/.pop/bin/pop` and never
-/// touches PATH, so the hook has to name it. Anything else calls `pop`.
+/// A per-project install puts the binary at `<repo>/.madelog/bin/madelog` and never
+/// touches PATH, so the hook has to name it. Anything else calls `madelog`.
 pub fn hook_command_for(workdir: &Path, exe: Option<&Path>) -> String {
     let Some(exe) = exe else {
-        return "pop".to_string();
+        return "madelog".to_string();
     };
-    let bin_dir = workdir.join(".pop").join("bin");
+    let bin_dir = workdir.join(".madelog").join("bin");
     let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
     if canon(exe).starts_with(canon(&bin_dir)) {
         shell_quote(&exe.to_string_lossy())
     } else {
-        "pop".to_string()
+        "madelog".to_string()
     }
 }
 
@@ -234,20 +235,20 @@ fn make_executable(_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Keep `.pop/` out of the repository without touching the user's `.gitignore`.
+/// Keep `.madelog/` out of the repository without touching the user's `.gitignore`.
 pub fn add_to_git_exclude(git_dir: &Path) -> Result<()> {
     let info = git_dir.join("info");
     std::fs::create_dir_all(&info).with_context(|| format!("creating {}", info.display()))?;
     let path = info.join("exclude");
     let existing = std::fs::read_to_string(&path).unwrap_or_default();
-    if existing.lines().any(|l| l.trim() == ".pop/") {
+    if existing.lines().any(|l| l.trim() == ".madelog/") {
         return Ok(());
     }
     let mut merged = existing;
     if !merged.is_empty() && !merged.ends_with('\n') {
         merged.push('\n');
     }
-    merged.push_str(".pop/\n");
+    merged.push_str(".madelog/\n");
     std::fs::write(&path, merged).with_context(|| format!("writing {}", path.display()))
 }
 
@@ -283,10 +284,10 @@ mod tests {
     fn a_new_hook_gets_a_shebang_and_our_line() {
         let dir = tempfile::TempDir::new().unwrap();
         let git_dir = dir.path().join(".git");
-        install_post_commit_hook(&git_dir, "pop").unwrap();
+        install_post_commit_hook(&git_dir, "madelog").unwrap();
         let hook = std::fs::read_to_string(git_dir.join("hooks/post-commit")).unwrap();
         assert!(hook.starts_with("#!/bin/sh\n"), "{hook}");
-        assert!(hook.contains("pop hook post-commit || true"), "{hook}");
+        assert!(hook.contains("madelog hook post-commit || true"), "{hook}");
     }
 
     #[test]
@@ -296,8 +297,8 @@ mod tests {
         std::fs::create_dir_all(git_dir.join("hooks")).unwrap();
         std::fs::write(git_dir.join("hooks/post-commit"), "#!/bin/bash\necho hi").unwrap();
 
-        install_post_commit_hook(&git_dir, "pop").unwrap();
-        install_post_commit_hook(&git_dir, "pop").unwrap();
+        install_post_commit_hook(&git_dir, "madelog").unwrap();
+        install_post_commit_hook(&git_dir, "madelog").unwrap();
 
         let hook = std::fs::read_to_string(git_dir.join("hooks/post-commit")).unwrap();
         assert!(hook.contains("echo hi"), "{hook}");
@@ -307,29 +308,29 @@ mod tests {
     #[test]
     fn the_hook_names_a_per_project_binary() {
         let dir = tempfile::TempDir::new().unwrap();
-        let exe = dir.path().join(".pop").join("bin").join("pop");
+        let exe = dir.path().join(".madelog").join("bin").join("madelog");
         std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
         std::fs::write(&exe, "binary").unwrap();
 
         let command = hook_command_for(dir.path(), Some(&exe));
-        assert!(command.contains(".pop/bin/pop"), "{command}");
-        assert_ne!(command, "pop");
+        assert!(command.contains(".madelog/bin/madelog"), "{command}");
+        assert_ne!(command, "madelog");
     }
 
     #[test]
     fn a_binary_anywhere_else_is_called_by_name() {
         let dir = tempfile::TempDir::new().unwrap();
         assert_eq!(
-            hook_command_for(dir.path(), Some(Path::new("/usr/local/bin/pop"))),
-            "pop"
+            hook_command_for(dir.path(), Some(Path::new("/usr/local/bin/madelog"))),
+            "madelog"
         );
-        assert_eq!(hook_command_for(dir.path(), None), "pop");
+        assert_eq!(hook_command_for(dir.path(), None), "madelog");
     }
 
     #[test]
     fn paths_with_spaces_are_quoted() {
-        assert_eq!(shell_quote("/a b/pop"), "'/a b/pop'");
-        assert_eq!(shell_quote("/a/pop"), "/a/pop");
+        assert_eq!(shell_quote("/a b/madelog"), "'/a b/madelog'");
+        assert_eq!(shell_quote("/a/madelog"), "/a/madelog");
     }
 
     #[test]
@@ -344,7 +345,7 @@ mod tests {
 
         let body = std::fs::read_to_string(git_dir.join("info/exclude")).unwrap();
         assert!(body.contains("*.log"), "{body}");
-        assert_eq!(body.matches(".pop/").count(), 1, "{body}");
+        assert_eq!(body.matches(".madelog/").count(), 1, "{body}");
     }
 
     #[test]

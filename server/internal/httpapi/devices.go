@@ -3,7 +3,7 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/pop-dev/popserver/internal/sign"
+	"github.com/madelog/server/internal/sign"
 )
 
 type createDeviceRequest struct {
@@ -15,7 +15,7 @@ type createDeviceResponse struct {
 }
 
 // handleCreateDevice registers an ed25519 public key. Idempotent: the same key
-// always maps to the same device id, so `pop init` can call it on every run.
+// always maps to the same device id, so `madelog init` can call it on every run.
 func (a *api) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
 	var req createDeviceRequest
 	if tooLarge, err := decodeJSON(w, r, 4<<10, &req); err != nil {

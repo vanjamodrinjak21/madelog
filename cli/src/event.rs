@@ -263,7 +263,7 @@ impl Event {
         serde_json::from_value(self.payload.clone())
     }
 
-    /// One line describing the event, for `pop log`.
+    /// One line describing the event, for `madelog log`.
     pub fn title(&self) -> String {
         match self.kind {
             EventKind::Intent => self

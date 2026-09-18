@@ -1,7 +1,7 @@
 //! Reader for Git AI attribution notes.
 //!
 //! Git AI is installed separately by the user and writes its attribution into
-//! `refs/notes/ai`, one note per commit. pop never parses editor or tool logs
+//! `refs/notes/ai`, one note per commit. madelog never parses editor or tool logs
 //! itself; this module is the only place that knows Git AI's format.
 //!
 //! What a note can and cannot tell us is worked out in
@@ -25,7 +25,7 @@ use crate::gitrepo::ExcerptFilter;
 
 pub use note::{parse as parse_note, Note, Route};
 
-/// The only ref pop reads. `refs/notes/commits`, `refs/notes/ai-remote/*` and
+/// The only ref madelog reads. `refs/notes/commits`, `refs/notes/ai-remote/*` and
 /// `refs/notes/ai-display` are none of our business.
 pub const NOTES_REF: &str = "refs/notes/ai";
 
@@ -179,12 +179,12 @@ fn claude_prompt(workdir: &Path, session_id: &str, filter: &ExcerptFilter) -> Op
 }
 
 /// `privacy.redact` from the repository's own config. A config we cannot read
-/// redacts nothing, which matches how the rest of pop treats a missing file.
+/// redacts nothing, which matches how the rest of madelog treats a missing file.
 fn redaction_filter(workdir: Option<&Path>) -> ExcerptFilter {
     let Some(workdir) = workdir else {
         return ExcerptFilter::default();
     };
-    Config::load(&workdir.join(".pop").join("config.toml"))
+    Config::load(&workdir.join(".madelog").join("config.toml"))
         .ok()
         .and_then(|config| ExcerptFilter::new(&config.privacy.redact).ok())
         .unwrap_or_default()
@@ -202,8 +202,8 @@ fn warn_git_ai_missing() {
         return;
     }
     ONCE.call_once(|| {
-        eprintln!("pop: Git AI is not installed, so no AI sessions are recorded.");
-        eprintln!("pop: install it with: curl -sSL https://usegitai.com/install.sh | bash");
+        eprintln!("madelog: Git AI is not installed, so no AI sessions are recorded.");
+        eprintln!("madelog: install it with: {GIT_AI_INSTALL}");
     });
 }
 
@@ -211,10 +211,19 @@ fn warn_unreadable(reason: &str) {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         eprintln!(
-            "pop: a Git AI note could not be read, so its AI sessions are skipped ({reason})"
+            "madelog: a Git AI note could not be read, so its AI sessions are skipped ({reason})"
         );
     });
 }
+
+/// How to install Git AI. It ships an installer script rather than a package —
+/// `cargo install git-ai` is an unrelated crate — so every hint we print is the
+/// command from usegitai.com, not a download page.
+#[cfg(not(windows))]
+pub const GIT_AI_INSTALL: &str = "curl -sSL https://usegitai.com/install.sh | bash";
+/// See [`GIT_AI_INSTALL`].
+#[cfg(windows)]
+pub const GIT_AI_INSTALL: &str = "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://usegitai.com/install.ps1 | iex\"";
 
 /// Is `git-ai` on PATH, or where its installer puts it?
 ///

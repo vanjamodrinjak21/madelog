@@ -5,14 +5,14 @@ use common::*;
 #[test]
 fn export_writes_valid_json_with_intent_config_and_events() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
     repo.write("a.txt", "one\n");
     repo.commit_all("first");
-    pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
-    pop::run_in(repo.root(), &["note", "wrote it down"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["note", "wrote it down"]).unwrap();
 
     let out = repo.path("export.json");
-    pop::run_in(repo.root(), &["export", out.to_str().unwrap()]).unwrap();
+    madelog::run_in(repo.root(), &["export", out.to_str().unwrap()]).unwrap();
 
     let raw = std::fs::read_to_string(&out).unwrap();
     let v: serde_json::Value = serde_json::from_str(&raw).expect("valid JSON");
@@ -39,9 +39,9 @@ fn export_writes_valid_json_with_intent_config_and_events() {
 #[test]
 fn export_without_a_path_prints_json_to_stdout() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
 
-    let out = pop::run_capture(repo.root(), &["export"]).unwrap();
+    let out = madelog::run_capture(repo.root(), &["export"]).unwrap();
     let v: serde_json::Value = serde_json::from_str(&out).expect("valid JSON on stdout");
     assert_eq!(v["events"].as_array().unwrap().len(), 1);
 }
@@ -49,14 +49,14 @@ fn export_without_a_path_prints_json_to_stdout() {
 #[test]
 fn log_json_lists_every_event() {
     let repo = init_repo();
-    init_pop(&repo);
-    pop::run_in(repo.root(), &["note", "one"]).unwrap();
+    init_madelog(&repo);
+    madelog::run_in(repo.root(), &["note", "one"]).unwrap();
 
-    let out = pop::run_capture(repo.root(), &["log", "--json"]).unwrap();
+    let out = madelog::run_capture(repo.root(), &["log", "--json"]).unwrap();
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v.as_array().unwrap().len(), 2);
 
-    let human = pop::run_capture(repo.root(), &["log"]).unwrap();
+    let human = madelog::run_capture(repo.root(), &["log"]).unwrap();
     assert!(human.contains("intent"), "{human}");
     assert!(human.contains("one"), "{human}");
 }

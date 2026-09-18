@@ -1,4 +1,4 @@
-//! `pop note` — one sentence, anchored to the commit you are on.
+//! `madelog note` — one sentence, anchored to the commit you are on.
 
 use anyhow::{bail, Result};
 
@@ -9,7 +9,7 @@ use crate::Ctx;
 pub fn run(ctx: &mut Ctx<'_>, text: &str, private: bool) -> Result<()> {
     let text = text.trim();
     if text.is_empty() {
-        bail!("a note needs a sentence: pop note \"why you did it that way\"");
+        bail!("a note needs a sentence: madelog note \"why you did it that way\"");
     }
     let store = ctx.open_store()?;
     let head = Repo::discover(&ctx.cwd)?.head_sha()?;

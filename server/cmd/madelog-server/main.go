@@ -1,4 +1,4 @@
-// Command popserver stores published pop pages and their hash-chain roots.
+// Command madelog-server stores published madelog pages and their hash-chain roots.
 //
 // It applies its embedded migrations at startup, serves the API in spec
 // section 5, and shuts down gracefully on SIGINT or SIGTERM.
@@ -15,16 +15,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pop-dev/popserver/internal/config"
-	"github.com/pop-dev/popserver/internal/httpapi"
-	"github.com/pop-dev/popserver/internal/migrate"
-	"github.com/pop-dev/popserver/internal/store"
+	"github.com/madelog/server/internal/config"
+	"github.com/madelog/server/internal/httpapi"
+	"github.com/madelog/server/internal/migrate"
+	"github.com/madelog/server/internal/store"
 )
 
 func main() {
 	if err := run(); err != nil {
 		// The logger may not exist yet, so this one goes straight to stderr.
-		fmt.Fprintf(os.Stderr, "popserver: %v\n", err)
+		fmt.Fprintf(os.Stderr, "madelog-server: %v\n", err)
 		os.Exit(1)
 	}
 }

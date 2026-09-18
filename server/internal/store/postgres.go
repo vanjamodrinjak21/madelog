@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/pop-dev/popserver/internal/db"
+	"github.com/madelog/server/internal/db"
 )
 
 // Postgres is the production Store, backed by a pgx connection pool and the

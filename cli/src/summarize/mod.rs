@@ -109,13 +109,13 @@ fn choose_provider_at(config: &Config, host: &str) -> Result<Choice> {
             if !client.is_available() {
                 bail!(
                     "llm.provider is `ollama`, but nothing answers at {host}. \
-                     Start Ollama, or run `pop config set llm.provider auto`."
+                     Start Ollama, or run `madelog config set llm.provider auto`."
                 );
             }
             if !client.has_model(&model) {
                 bail!(
                     "llm.provider is `ollama`, but {host} has no model `{model}`. \
-                     Run `ollama pull {model}`, or run `pop config set llm.provider auto`."
+                     Run `ollama pull {model}`, or run `madelog config set llm.provider auto`."
                 );
             }
             Ok(Choice {

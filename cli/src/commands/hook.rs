@@ -1,4 +1,4 @@
-//! `pop hook post-commit` — the only thing that runs without you asking.
+//! `madelog hook post-commit` — the only thing that runs without you asking.
 //!
 //! It must never fail a commit. Every error is written to stderr and the
 //! command still succeeds.
@@ -14,17 +14,17 @@ use crate::Ctx;
 pub fn post_commit(ctx: &mut Ctx<'_>) -> Result<()> {
     if let Err(err) = record(ctx) {
         // A broken hook must not stand between you and your commit.
-        eprintln!("pop: could not record this commit: {err:#}");
+        eprintln!("madelog: could not record this commit: {err:#}");
     }
     Ok(())
 }
 
 fn record(ctx: &mut Ctx<'_>) -> Result<()> {
     let repo = Repo::discover(&ctx.cwd)?;
-    let pop_dir = repo.workdir()?.join(".pop");
-    let db = pop_dir.join("log.db");
+    let madelog_dir = repo.workdir()?.join(".madelog");
+    let db = madelog_dir.join("log.db");
     if !db.exists() {
-        // pop is not set up here. Not an error: the hook may outlive `.pop`.
+        // madelog is not set up here. Not an error: the hook may outlive `.madelog`.
         return Ok(());
     }
 
@@ -36,7 +36,7 @@ fn record(ctx: &mut Ctx<'_>) -> Result<()> {
         return Ok(());
     }
 
-    let config = Config::load(&pop_dir.join("config.toml"))?;
+    let config = Config::load(&madelog_dir.join("config.toml"))?;
     let filter = ExcerptFilter::new(&config.privacy.redact)?;
 
     let meta = repo.commit_meta(&sha)?;
@@ -67,7 +67,7 @@ fn record(ctx: &mut Ctx<'_>) -> Result<()> {
                     store.append_payload(Some(&sha), &Payload::AiSession(session))?;
                 }
             }
-            Err(err) => eprintln!("pop: could not read Git AI notes for {sha}: {err:#}"),
+            Err(err) => eprintln!("madelog: could not read Git AI notes for {sha}: {err:#}"),
         }
     }
 

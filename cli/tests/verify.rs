@@ -3,17 +3,17 @@ mod common;
 use common::*;
 
 fn capture(repo: &TestRepo, args: &[&str]) -> anyhow::Result<String> {
-    pop::run_capture(repo.root(), args)
+    madelog::run_capture(repo.root(), args)
 }
 
 #[test]
 fn verify_passes_on_an_untouched_chain() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
     repo.write("a.txt", "one\n");
     repo.commit_all("first");
-    pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
-    pop::run_in(repo.root(), &["note", "picked a hash chain"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["note", "picked a hash chain"]).unwrap();
 
     let out = capture(&repo, &["verify"]).expect("verify passes");
     assert!(out.contains("root "), "{out}");
@@ -27,15 +27,15 @@ fn verify_passes_on_an_untouched_chain() {
 #[test]
 fn verify_fails_after_a_payload_is_tampered_with_in_sqlite() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
     repo.write("a.txt", "one\n");
     repo.commit_all("first");
-    pop::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
-    pop::run_in(repo.root(), &["note", "an honest note"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["note", "an honest note"]).unwrap();
 
-    // Someone edits the database behind pop's back. The table is append-only,
+    // Someone edits the database behind madelog's back. The table is append-only,
     // so they have to remove the guard first.
-    let conn = rusqlite::Connection::open(repo.path(".pop/log.db")).unwrap();
+    let conn = rusqlite::Connection::open(repo.path(".madelog/log.db")).unwrap();
     conn.execute_batch("DROP TRIGGER events_no_update;")
         .unwrap();
     conn.execute(
@@ -54,9 +54,9 @@ fn verify_fails_after_a_payload_is_tampered_with_in_sqlite() {
 #[test]
 fn the_events_table_rejects_updates_and_deletes() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
 
-    let conn = rusqlite::Connection::open(repo.path(".pop/log.db")).unwrap();
+    let conn = rusqlite::Connection::open(repo.path(".madelog/log.db")).unwrap();
     assert!(conn
         .execute("UPDATE events SET kind = 'commit' WHERE seq = 1", [])
         .is_err());
@@ -66,9 +66,9 @@ fn the_events_table_rejects_updates_and_deletes() {
 }
 
 #[test]
-fn verify_requires_pop_init() {
+fn verify_requires_madelog_init() {
     let repo = init_repo();
     isolate_device_key();
     let err = capture(&repo, &["verify"]).unwrap_err();
-    assert!(format!("{err:#}").contains("pop init"), "{err:#}");
+    assert!(format!("{err:#}").contains("madelog init"), "{err:#}");
 }

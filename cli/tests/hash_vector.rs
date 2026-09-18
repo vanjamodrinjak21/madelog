@@ -1,7 +1,9 @@
 //! The hash chain is the product. These vectors are computed independently
 //! (sha256 of the documented byte string) and must never drift.
 
-use pop::event::{canonical_json, hash_for, EventKind, IntentPayload, Payload, GENESIS_PREV_HASH};
+use madelog::event::{
+    canonical_json, hash_for, EventKind, IntentPayload, Payload, GENESIS_PREV_HASH,
+};
 
 #[test]
 fn genesis_prev_hash_is_sixty_four_zeros() {
@@ -24,21 +26,21 @@ fn canonical_json_sorts_keys_and_drops_whitespace() {
 #[test]
 fn intent_payload_canonicalises_as_specified() {
     let payload = Payload::Intent(IntentPayload {
-        what: "a pop cli".into(),
+        what: "a madelog cli".into(),
         for_whom: "a small studio".into(),
         tools: vec!["claude-code".into()],
         record_ai_sessions: true,
     });
     assert_eq!(
         canonical_json(&payload.to_value()),
-        r#"{"for_whom":"a small studio","record_ai_sessions":true,"tools":["claude-code"],"what":"a pop cli"}"#
+        r#"{"for_whom":"a small studio","record_ai_sessions":true,"tools":["claude-code"],"what":"a madelog cli"}"#
     );
 }
 
 #[test]
 fn hash_for_matches_the_published_test_vector() {
     let payload = serde_json::json!({
-        "what": "a pop cli",
+        "what": "a madelog cli",
         "for_whom": "a small studio",
         "tools": ["claude-code"],
         "record_ai_sessions": true,
@@ -51,7 +53,7 @@ fn hash_for_matches_the_published_test_vector() {
     );
     assert_eq!(
         hash,
-        "acca5e4cbe2f6322f3db2ba4418cbcda1c923a02b8904acf9c6545afce20806e"
+        "3b941a508d089cec26830c48b4882cce349ce15f659504de83107e7683a24546"
     );
     assert_eq!(hash.len(), 64);
     assert!(hash

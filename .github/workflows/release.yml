@@ -21,27 +21,27 @@ jobs:
         include:
           - target: aarch64-apple-darwin
             os: macos-latest
-            binary: pop
+            binary: madelog
           - target: x86_64-apple-darwin
             os: macos-latest
-            binary: pop
+            binary: madelog
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            binary: pop
+            binary: madelog
           # Native arm64 Linux runner: free for public repositories, a paid label otherwise.
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
-            binary: pop
+            binary: madelog
           # msvc is the host target of the Windows runner, so no extra toolchain is needed.
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            binary: pop.exe
+            binary: madelog.exe
     steps:
       - uses: actions/checkout@v4
 
       - name: Resolve the version
         shell: bash
-        run: echo "POP_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+        run: echo "MADELOG_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
       # git2 links against OpenSSL on Linux; the Apple and Windows builds use the system stacks.
       - name: Install build dependencies
@@ -68,26 +68,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          name="pop-${POP_VERSION}-${{ matrix.target }}"
+          name="madelog-${MADELOG_VERSION}-${{ matrix.target }}"
           cp "cli/target/${{ matrix.target }}/release/${{ matrix.binary }}" "${{ matrix.binary }}"
           chmod +x "${{ matrix.binary }}"
           zip -j "${name}.zip" "${{ matrix.binary }}" LICENSE
-          echo "POP_ASSET=${name}.zip" >> "$GITHUB_ENV"
+          echo "MADELOG_ASSET=${name}.zip" >> "$GITHUB_ENV"
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $name = "pop-$env:POP_VERSION-${{ matrix.target }}"
+          $name = "madelog-$env:MADELOG_VERSION-${{ matrix.target }}"
           Copy-Item "cli/target/${{ matrix.target }}/release/${{ matrix.binary }}" "${{ matrix.binary }}"
           Compress-Archive -Path "${{ matrix.binary }}", "LICENSE" -DestinationPath "$name.zip"
-          Add-Content -Path $env:GITHUB_ENV -Value "POP_ASSET=$name.zip"
+          Add-Content -Path $env:GITHUB_ENV -Value "MADELOG_ASSET=$name.zip"
 
       - name: Upload the archive
         uses: actions/upload-artifact@v4
         with:
-          name: pop-${{ matrix.target }}
-          path: ${{ env.POP_ASSET }}
+          name: madelog-${{ matrix.target }}
+          path: ${{ env.MADELOG_ASSET }}
           if-no-files-found: error
           retention-days: 7
 
@@ -102,7 +102,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dist
-          pattern: pop-*
+          pattern: madelog-*
           merge-multiple: true
 
       - name: Write SHA256SUMS

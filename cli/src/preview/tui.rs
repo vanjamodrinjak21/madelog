@@ -176,7 +176,7 @@ impl Tui {
         let lines: Vec<Line<'_>> = match model.selected_item() {
             Some(item) => item.detail.iter().map(|l| Line::raw(l.as_str())).collect(),
             None => vec![Line::raw(
-                "Nothing recorded yet. Commit something, or write a note with `pop note`.",
+                "Nothing recorded yet. Commit something, or write a note with `madelog note`.",
             )],
         };
         let title = match model.selected_item() {
@@ -209,7 +209,7 @@ impl Tui {
                 lines.extend(summary.text.lines().map(Line::raw));
             }
             None => lines.push(Line::raw(
-                "No summaries yet. `pop summarize` writes one per week.",
+                "No summaries yet. `madelog summarize` writes one per week.",
             )),
         }
         frame.render_widget(
@@ -273,7 +273,7 @@ mod tests {
 
     fn model() -> Model {
         let mut model = Model {
-            project: "pop".into(),
+            project: "madelog".into(),
             items: vec![
                 Item {
                     id: "1".into(),
@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn an_empty_log_still_draws() {
         let empty = Model {
-            project: "pop".into(),
+            project: "madelog".into(),
             ..Default::default()
         };
         let text = screen(&empty).join("\n");

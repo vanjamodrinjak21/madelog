@@ -9,9 +9,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/pop-dev/popserver/internal/sign"
-	"github.com/pop-dev/popserver/internal/slug"
-	"github.com/pop-dev/popserver/internal/store"
+	"github.com/madelog/server/internal/sign"
+	"github.com/madelog/server/internal/slug"
+	"github.com/madelog/server/internal/store"
 )
 
 // slugAttempts is how many times we retry a random slug before giving up.

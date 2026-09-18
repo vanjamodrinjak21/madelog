@@ -1,13 +1,13 @@
-# popserver
+# madelog-server
 
-The Go service behind `pop publish`. It stores published project pages, keeps a
+The Go service behind `madelog publish`. It stores published project pages, keeps a
 history of hash-chain roots, serves the public page and its verification record,
 and files Lemon Squeezy webhooks for later. Nothing else.
 
-Spec: `docs/superpowers/specs/2026-09-17-pop-v1-design.md` section 5.
+Spec: `docs/superpowers/specs/2026-09-17-madelog-v1-design.md` section 5.
 
 ```
-cmd/popserver        main: config, migrations, HTTP server, graceful shutdown
+cmd/madelog-server        main: config, migrations, HTTP server, graceful shutdown
 internal/config      environment, validated once at startup
 internal/httpapi     chi router, middleware, every handler
 internal/sign        the exact byte strings the CLI signs, plus verification
@@ -201,13 +201,13 @@ from the database.
 Database tests run only when `DATABASE_URL` is set and skip otherwise:
 
 ```sh
-DATABASE_URL='postgres://pop:pop@localhost:5432/pop?sslmode=disable' go test ./...
+DATABASE_URL='postgres://madelog:madelog@localhost:5432/madelog?sslmode=disable' go test ./...
 ```
 
 ## Privacy
 
 The server stores the rendered html, the root, the signature timestamps and the
-device's public key. That is all `pop publish` sends (spec section 7). There is
+device's public key. That is all `madelog publish` sends (spec section 7). There is
 no account, no email on the publish path, and `DELETE /v1/pages/{slug}` works
 from day one. Billing payloads are stored verbatim, and only after their HMAC
 has been verified.

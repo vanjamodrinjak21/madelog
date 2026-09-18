@@ -7,12 +7,12 @@ use crate::{commands, Ctx, ExitError};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "pop",
+    name = "madelog",
     version,
     about = "Record how your project came together, and prove it.",
-    long_about = "pop runs alongside git. It records your commits, your AI sessions and the \
+    long_about = "madelog runs alongside git. It records your commits, your AI sessions and the \
 one-sentence decisions you write down, chains them with sha256, and turns them into a page you \
-can send to a company. Nothing leaves your machine until you run `pop publish`."
+can send to a company. Nothing leaves your machine until you run `madelog publish`."
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -21,20 +21,20 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Set up pop in this repository.
+    /// Set up madelog in this repository.
     Init(InitArgs),
-    /// Explain what pop does, check your tools, and offer to set up this repo.
+    /// Explain what madelog does, check your tools, and offer to set up this repo.
     Onboard(OnboardArgs),
     /// Write down a one-sentence decision.
     Note(NoteArgs),
-    /// Hooks pop installs into git. You do not run these by hand.
+    /// Hooks madelog installs into git. You do not run these by hand.
     #[command(subcommand)]
     Hook(HookCommand),
     /// Print the recorded events.
     Log(LogArgs),
     /// Recompute the hash chain and print the root.
     Verify,
-    /// Write everything pop has recorded as JSON.
+    /// Write everything madelog has recorded as JSON.
     Export(ExportArgs),
     /// Hide one AI session from the published page.
     Hide(HideArgs),
@@ -143,7 +143,7 @@ pub enum ConfigCommand {
 
 #[derive(Debug, Args)]
 pub struct PublishArgs {
-    /// Render the page to .pop/site/index.html and stop there.
+    /// Render the page to .madelog/site/index.html and stop there.
     #[arg(long)]
     pub local: bool,
     /// The server to publish to.
@@ -198,7 +198,7 @@ pub struct AskArgs {
 
 /// Parse arguments, without the leading program name.
 pub fn parse(args: &[&str]) -> Result<Cli> {
-    let argv = std::iter::once("pop").chain(args.iter().copied());
+    let argv = std::iter::once("madelog").chain(args.iter().copied());
     Cli::try_parse_from(argv).map_err(|e| {
         // `--help` and `--version` are not errors: print and exit 0.
         let code = match e.kind() {

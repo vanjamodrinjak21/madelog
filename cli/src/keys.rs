@@ -1,5 +1,5 @@
 //! The device key: one ed25519 keypair per machine, used to sign the chain
-//! root when you publish. It never leaves `~/.config/pop/device.key`.
+//! root when you publish. It never leaves `~/.config/madelog/device.key`.
 
 use std::path::PathBuf;
 
@@ -7,9 +7,9 @@ use anyhow::{anyhow, Context, Result};
 use ed25519_dalek::{Signer, SigningKey, SECRET_KEY_LENGTH};
 
 /// Override the key directory (used by tests and by per-project installs).
-pub const CONFIG_DIR_ENV: &str = "POP_CONFIG_DIR";
+pub const CONFIG_DIR_ENV: &str = "MADELOG_CONFIG_DIR";
 
-/// `~/.config/pop`, or `$POP_CONFIG_DIR`.
+/// `~/.config/madelog`, or `$MADELOG_CONFIG_DIR`.
 pub fn config_dir() -> Result<PathBuf> {
     if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV) {
         if !dir.is_empty() {
@@ -17,7 +17,7 @@ pub fn config_dir() -> Result<PathBuf> {
         }
     }
     let home = dirs::home_dir().ok_or_else(|| anyhow!("cannot find your home directory"))?;
-    Ok(home.join(".config").join("pop"))
+    Ok(home.join(".config").join("madelog"))
 }
 
 pub fn key_path() -> Result<PathBuf> {
@@ -55,7 +55,7 @@ impl DeviceKey {
         body.push('\n');
         // Write the full key to a private temp file first, then link it into
         // place. `hard_link` fails if the target already exists, so two
-        // concurrent `pop init` runs can never observe a half-written key:
+        // concurrent `madelog init` runs can never observe a half-written key:
         // the loser simply loads the winner's key.
         let tmp = dir.join(format!(
             ".device.key.{}.{}.tmp",

@@ -1,4 +1,4 @@
-// Package sign holds the exact byte strings the pop CLI signs with its device
+// Package sign holds the exact byte strings the madelog CLI signs with its device
 // ed25519 key, plus the verification helpers the HTTP handlers use.
 //
 // The byte strings are a wire contract shared with the CLI. They are defined

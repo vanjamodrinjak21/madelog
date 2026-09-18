@@ -1,20 +1,20 @@
-//! `pop summarize` and `pop summary edit`, end to end, with `llm.provider =
+//! `madelog summarize` and `madelog summary edit`, end to end, with `llm.provider =
 //! none` so the tests never look for a model.
 
 mod common;
 
 use common::*;
-use pop::event::{
+use madelog::event::{
     CommitFile, CommitPayload, DecisionPayload, EventKind, FileStatus, Payload, SummaryPayload,
 };
-use pop::store::Store;
+use madelog::store::Store;
 
 /// Midday UTC on a Wednesday: no timezone on earth moves that out of its week.
 const WEEK_ONE: &str = "2026-01-07T12:00:00.000Z";
 const WEEK_THREE: &str = "2026-01-21T12:00:00.000Z";
 
 fn store(repo: &TestRepo) -> Store {
-    Store::open(&repo.path(".pop/log.db")).unwrap()
+    Store::open(&repo.path(".madelog/log.db")).unwrap()
 }
 
 /// Append a commit event with a timestamp of our choosing. The post-commit
@@ -62,8 +62,8 @@ fn record_decision(repo: &TestRepo, ts: &str, text: &str, private: bool) {
 /// A repo with two weeks of history and no language model in sight.
 fn two_weeks() -> TestRepo {
     let repo = init_repo();
-    init_pop(&repo);
-    pop::run_capture(repo.root(), &["config", "set", "llm.provider", "none"]).unwrap();
+    init_madelog(&repo);
+    madelog::run_capture(repo.root(), &["config", "set", "llm.provider", "none"]).unwrap();
 
     record_commit(
         &repo,
@@ -96,7 +96,7 @@ fn summaries(repo: &TestRepo) -> Vec<SummaryPayload> {
 fn summarize_writes_one_summary_per_week() {
     let repo = two_weeks();
 
-    let out = pop::run_capture(repo.root(), &["summarize"]).unwrap();
+    let out = madelog::run_capture(repo.root(), &["summarize"]).unwrap();
 
     let written = summaries(&repo);
     assert_eq!(written.len(), 2, "{out}");
@@ -126,16 +126,16 @@ fn summarize_writes_one_summary_per_week() {
     assert!(!out.contains("hunter2"), "{out}");
     assert!(!out.contains("burned out"), "{out}");
 
-    pop::run_capture(repo.root(), &["verify"]).expect("the chain still verifies");
+    madelog::run_capture(repo.root(), &["verify"]).expect("the chain still verifies");
 }
 
 #[test]
 fn summarize_twice_writes_nothing_the_second_time() {
     let repo = two_weeks();
-    pop::run_capture(repo.root(), &["summarize"]).unwrap();
+    madelog::run_capture(repo.root(), &["summarize"]).unwrap();
     let after_first = events(&repo).len();
 
-    let out = pop::run_capture(repo.root(), &["summarize"]).unwrap();
+    let out = madelog::run_capture(repo.root(), &["summarize"]).unwrap();
 
     assert_eq!(events(&repo).len(), after_first, "{out}");
     assert!(out.contains("--force"), "{out}");
@@ -144,14 +144,14 @@ fn summarize_twice_writes_nothing_the_second_time() {
 #[test]
 fn force_writes_a_new_summary_over_the_old_one() {
     let repo = two_weeks();
-    pop::run_capture(repo.root(), &["summarize"]).unwrap();
+    madelog::run_capture(repo.root(), &["summarize"]).unwrap();
 
-    pop::run_capture(repo.root(), &["summarize", "--force"]).unwrap();
+    madelog::run_capture(repo.root(), &["summarize", "--force"]).unwrap();
 
     // Four events in the log, two weeks on the page: summaries are appended,
     // never rewritten.
     assert_eq!(summaries(&repo).len(), 4);
-    let latest = pop::summarize::latest_summaries(&events(&repo));
+    let latest = madelog::summarize::latest_summaries(&events(&repo));
     assert_eq!(latest.len(), 2);
     assert_eq!(latest[0].week_start, "2026-01-05");
     assert_eq!(latest[1].week_start, "2026-01-19");
@@ -160,9 +160,9 @@ fn force_writes_a_new_summary_over_the_old_one() {
 #[test]
 fn a_single_week_can_be_rebuilt_on_its_own() {
     let repo = two_weeks();
-    pop::run_capture(repo.root(), &["summarize"]).unwrap();
+    madelog::run_capture(repo.root(), &["summarize"]).unwrap();
 
-    let out = pop::run_capture(repo.root(), &["summarize", "--week", "3", "--force"]).unwrap();
+    let out = madelog::run_capture(repo.root(), &["summarize", "--week", "3", "--force"]).unwrap();
 
     let written = summaries(&repo);
     assert_eq!(written.len(), 3);
@@ -174,7 +174,7 @@ fn a_single_week_can_be_rebuilt_on_its_own() {
 #[test]
 fn an_unknown_week_says_which_weeks_exist() {
     let repo = two_weeks();
-    let err = pop::run_in(repo.root(), &["summarize", "--week", "9"]).unwrap_err();
+    let err = madelog::run_in(repo.root(), &["summarize", "--week", "9"]).unwrap_err();
     assert!(format!("{err:#}").contains("no week 9"), "{err:#}");
     assert!(format!("{err:#}").contains("1, 3"), "{err:#}");
 }
@@ -182,10 +182,10 @@ fn an_unknown_week_says_which_weeks_exist() {
 #[test]
 fn a_repository_without_commits_has_nothing_to_summarise() {
     let repo = init_repo();
-    init_pop(&repo);
-    pop::run_capture(repo.root(), &["config", "set", "llm.provider", "none"]).unwrap();
+    init_madelog(&repo);
+    madelog::run_capture(repo.root(), &["config", "set", "llm.provider", "none"]).unwrap();
 
-    let out = pop::run_capture(repo.root(), &["summarize"]).unwrap();
+    let out = madelog::run_capture(repo.root(), &["summarize"]).unwrap();
 
     assert!(out.contains("nothing to summarise yet"), "{out}");
     assert!(summaries(&repo).is_empty());
@@ -193,9 +193,9 @@ fn a_repository_without_commits_has_nothing_to_summarise() {
 
 #[test]
 fn summary_edit_appends_your_own_words() {
-    std::env::set_var("POP_EDITOR", "stdin");
+    std::env::set_var("MADELOG_EDITOR", "stdin");
     let repo = two_weeks();
-    pop::run_capture(repo.root(), &["summarize"]).unwrap();
+    madelog::run_capture(repo.root(), &["summarize"]).unwrap();
 
     let generated = events(&repo)
         .into_iter()
@@ -203,7 +203,7 @@ fn summary_edit_appends_your_own_words() {
         .unwrap();
 
     let mut out: Vec<u8> = Vec::new();
-    pop::run_in_with(
+    madelog::run_in_with(
         repo.root(),
         &["summary", "edit", &generated.id],
         "That week I replaced the json file with sqlite.".as_bytes(),
@@ -226,7 +226,7 @@ fn summary_edit_appends_your_own_words() {
     assert!(out.contains("edited by you"), "{out}");
 
     // The page shows the last summary per week, which is now yours.
-    let latest = pop::summarize::latest_summaries(&events(&repo));
+    let latest = madelog::summarize::latest_summaries(&events(&repo));
     assert_eq!(latest.len(), 2);
     assert_eq!(
         latest[0].text,
@@ -234,14 +234,14 @@ fn summary_edit_appends_your_own_words() {
     );
     assert!(latest[0].edited);
 
-    pop::run_capture(repo.root(), &["verify"]).expect("the chain still verifies");
+    madelog::run_capture(repo.root(), &["verify"]).expect("the chain still verifies");
 }
 
 #[test]
 fn an_edit_that_changes_nothing_appends_nothing() {
-    std::env::set_var("POP_EDITOR", "stdin");
+    std::env::set_var("MADELOG_EDITOR", "stdin");
     let repo = two_weeks();
-    pop::run_capture(repo.root(), &["summarize"]).unwrap();
+    madelog::run_capture(repo.root(), &["summarize"]).unwrap();
     let generated = events(&repo)
         .into_iter()
         .find(|e| e.kind == EventKind::Summary)
@@ -250,7 +250,7 @@ fn an_edit_that_changes_nothing_appends_nothing() {
     let text: SummaryPayload = serde_json::from_value(generated.payload.clone()).unwrap();
 
     let mut out: Vec<u8> = Vec::new();
-    pop::run_in_with(
+    madelog::run_in_with(
         repo.root(),
         &["summary", "edit", &generated.id],
         text.text.as_bytes(),
@@ -264,16 +264,16 @@ fn an_edit_that_changes_nothing_appends_nothing() {
 
 #[test]
 fn an_empty_edit_is_refused() {
-    std::env::set_var("POP_EDITOR", "stdin");
+    std::env::set_var("MADELOG_EDITOR", "stdin");
     let repo = two_weeks();
-    pop::run_capture(repo.root(), &["summarize"]).unwrap();
+    madelog::run_capture(repo.root(), &["summarize"]).unwrap();
     let generated = events(&repo)
         .into_iter()
         .find(|e| e.kind == EventKind::Summary)
         .unwrap();
 
     let mut out: Vec<u8> = Vec::new();
-    let err = pop::run_in_with(
+    let err = madelog::run_in_with(
         repo.root(),
         &["summary", "edit", &generated.id],
         "   \n".as_bytes(),
@@ -293,19 +293,19 @@ fn summary_edit_refuses_anything_that_is_not_a_summary() {
         .find(|e| e.kind == EventKind::Decision)
         .unwrap();
 
-    let err = pop::run_in(repo.root(), &["summary", "edit", &decision.id]).unwrap_err();
+    let err = madelog::run_in(repo.root(), &["summary", "edit", &decision.id]).unwrap_err();
     assert!(format!("{err:#}").contains("is a decision"), "{err:#}");
 
-    let err = pop::run_in(repo.root(), &["summary", "edit", "not-an-id"]).unwrap_err();
+    let err = madelog::run_in(repo.root(), &["summary", "edit", "not-an-id"]).unwrap_err();
     assert!(format!("{err:#}").contains("no event with id"), "{err:#}");
 }
 
 #[test]
 fn a_remote_model_is_refused_and_the_template_writes_instead() {
     let repo = two_weeks();
-    pop::run_capture(repo.root(), &["config", "set", "llm.remote", "true"]).unwrap();
+    madelog::run_capture(repo.root(), &["config", "set", "llm.remote", "true"]).unwrap();
 
-    let out = pop::run_capture(repo.root(), &["summarize"]).unwrap();
+    let out = madelog::run_capture(repo.root(), &["summarize"]).unwrap();
 
     assert!(
         out.contains("remote models are not supported in this version"),

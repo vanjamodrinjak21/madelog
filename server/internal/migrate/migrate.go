@@ -16,7 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	dbassets "github.com/pop-dev/popserver/db"
+	dbassets "github.com/madelog/server/db"
 )
 
 // lockID namespaces the Postgres advisory lock that serialises startup

@@ -1,16 +1,16 @@
 mod common;
 
 use common::*;
-use pop::event::{DecisionPayload, EventKind};
+use madelog::event::{DecisionPayload, EventKind};
 
 #[test]
 fn note_appends_a_decision_anchored_to_head() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
     repo.write("src/main.rs", "fn main() {}\n");
     let sha = repo.commit_all("first commit");
 
-    pop::run_in(repo.root(), &["note", "chose sqlite over a json file"]).unwrap();
+    madelog::run_in(repo.root(), &["note", "chose sqlite over a json file"]).unwrap();
 
     let evs = events(&repo);
     let last = evs.last().unwrap();
@@ -25,9 +25,9 @@ fn note_appends_a_decision_anchored_to_head() {
 #[test]
 fn note_without_any_commit_has_no_commit_sha() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
 
-    pop::run_in(repo.root(), &["note", "nothing committed yet"]).unwrap();
+    madelog::run_in(repo.root(), &["note", "nothing committed yet"]).unwrap();
 
     let evs = events(&repo);
     let last = evs.last().unwrap();
@@ -38,9 +38,9 @@ fn note_without_any_commit_has_no_commit_sha() {
 #[test]
 fn note_private_flag_is_recorded() {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
 
-    pop::run_in(repo.root(), &["note", "--private", "burned out this week"]).unwrap();
+    madelog::run_in(repo.root(), &["note", "--private", "burned out this week"]).unwrap();
 
     let evs = events(&repo);
     let d: DecisionPayload = serde_json::from_value(evs.last().unwrap().payload.clone()).unwrap();
@@ -49,9 +49,9 @@ fn note_private_flag_is_recorded() {
 }
 
 #[test]
-fn note_requires_pop_init() {
+fn note_requires_madelog_init() {
     let repo = init_repo();
     isolate_device_key();
-    let err = pop::run_in(repo.root(), &["note", "too early"]).unwrap_err();
-    assert!(format!("{err:#}").contains("pop init"), "{err:#}");
+    let err = madelog::run_in(repo.root(), &["note", "too early"]).unwrap_err();
+    assert!(format!("{err:#}").contains("madelog init"), "{err:#}");
 }

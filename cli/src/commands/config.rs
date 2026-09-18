@@ -1,4 +1,4 @@
-//! `pop config get|set|list`.
+//! `madelog config get|set|list`.
 
 use anyhow::Result;
 
@@ -7,7 +7,7 @@ use crate::config::{Config, KEYS};
 use crate::Ctx;
 
 pub fn run(ctx: &mut Ctx<'_>, command: ConfigCommand) -> Result<()> {
-    let path = ctx.pop_dir()?.join("config.toml");
+    let path = ctx.madelog_dir()?.join("config.toml");
     let mut config = Config::load(&path)?;
 
     match command {

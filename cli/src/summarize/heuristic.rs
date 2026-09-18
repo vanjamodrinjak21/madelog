@@ -1,4 +1,4 @@
-//! The summary pop writes when no model is available.
+//! The summary madelog writes when no model is available.
 //!
 //! Deterministic, plain, and incapable of inventing anything: every sentence
 //! is assembled from counts and from text you wrote yourself. The same week

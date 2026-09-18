@@ -1,4 +1,4 @@
-//! The append-only event log, `.pop/log.db`.
+//! The append-only event log, `.madelog/log.db`.
 
 use std::path::{Path, PathBuf};
 
@@ -24,11 +24,11 @@ CREATE INDEX IF NOT EXISTS events_commit_sha_idx ON events(commit_sha);
 CREATE INDEX IF NOT EXISTS events_ts_idx         ON events(ts);
 
 -- The log is append-only. Tampering is still possible with a sqlite shell,
--- but it has to be deliberate, and `pop verify` will see it.
+-- but it has to be deliberate, and `madelog verify` will see it.
 CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON events
-BEGIN SELECT RAISE(ABORT, 'pop: events is append-only'); END;
+BEGIN SELECT RAISE(ABORT, 'madelog: events is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON events
-BEGIN SELECT RAISE(ABORT, 'pop: events is append-only'); END;
+BEGIN SELECT RAISE(ABORT, 'madelog: events is append-only'); END;
 "#;
 
 const COLUMNS: &str = "seq, id, ts, kind, commit_sha, payload, prev_hash, hash";

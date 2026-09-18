@@ -50,7 +50,7 @@ impl Repo {
         self.inner
             .workdir()
             .map(Path::to_path_buf)
-            .ok_or_else(|| anyhow!("this is a bare git repository; pop needs a working tree"))
+            .ok_or_else(|| anyhow!("this is a bare git repository; madelog needs a working tree"))
     }
 
     /// The sha HEAD points at, or `None` before the first commit.

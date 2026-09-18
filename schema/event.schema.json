@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://pop.dev/schema/event.schema.json",
-  "title": "pop event",
-  "description": "One recorded event in a pop project log. Every event enters the hash chain: hash = sha256(prev_hash + \"\\n\" + ts + \"\\n\" + kind + \"\\n\" + canonical_json(payload)), canonical JSON has sorted keys and no whitespace.",
+  "$id": "https://madelog.app/schema/event.schema.json",
+  "title": "madelog event",
+  "description": "One recorded event in a madelog project log. Every event enters the hash chain: hash = sha256(prev_hash + \"\\n\" + ts + \"\\n\" + kind + \"\\n\" + canonical_json(payload)), canonical JSON has sorted keys and no whitespace.",
   "type": "object",
   "required": ["id", "ts", "kind", "payload", "prev_hash", "hash"],
   "additionalProperties": false,

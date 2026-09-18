@@ -1,5 +1,5 @@
-//! Talking to the pop server: the exact bytes we sign, and the three requests
-//! `pop publish` and `pop unpublish` make.
+//! Talking to the madelog server: the exact bytes we sign, and the three requests
+//! `madelog publish` and `madelog unpublish` make.
 //!
 //! The signature scheme is `server/README.md`, and it is deliberately dull:
 //! the server verifies over the strings it received, so nothing here may
@@ -31,7 +31,7 @@ pub fn delete_message(slug: &str) -> String {
     format!("delete\n{slug}")
 }
 
-/// `pop.dev`, `https://pop.dev/` and `https://pop.dev` all mean the same thing.
+/// `madelog.app`, `https://madelog.app/` and `https://madelog.app` all mean the same thing.
 pub fn normalise_base(raw: &str) -> String {
     let trimmed = raw.trim().trim_end_matches('/');
     if trimmed.contains("://") {
@@ -55,7 +55,7 @@ pub enum ApiError {
     /// The server answered, and said no.
     #[error("{message}")]
     Refused { status: u16, message: String },
-    /// Nothing answered, or what answered was not the pop server.
+    /// Nothing answered, or what answered was not the madelog server.
     #[error("{0:#}")]
     Transport(#[source] anyhow::Error),
 }
@@ -98,16 +98,16 @@ fn server_words(body: &str) -> Option<String> {
 fn refusal(what: &str, status: u16, body: &str) -> ApiError {
     let said = server_words(body);
     let message = match status {
-        400 => "the server could not read that request. This is a bug in pop; \
-                `pop publish --local` still works."
+        400 => "the server could not read that request. This is a bug in madelog; \
+                `madelog publish --local` still works."
             .to_string(),
         401 => "the server did not accept this device's signature. Your device key at \
-                ~/.config/pop/device.key does not match the key it has on file — \
+                ~/.config/madelog/device.key does not match the key it has on file — \
                 register again from this machine, or publish from the machine that \
                 first published this page."
             .to_string(),
         403 => "that page belongs to another device. Publish from the machine that \
-                created it, or run `pop unpublish` there first."
+                created it, or run `madelog unpublish` there first."
             .to_string(),
         404 => format!("the server has nothing at that address ({what})."),
         413 => format!(
@@ -182,7 +182,7 @@ struct DeleteRequest<'a> {
 // client
 // ---------------------------------------------------------------------------
 
-/// A blocking client for the three endpoints pop uses.
+/// A blocking client for the three endpoints madelog uses.
 pub struct Client {
     base: String,
     agent: ureq::Agent,
@@ -228,7 +228,7 @@ impl Client {
         }
         let parsed: DeviceResponse = serde_json::from_str(body.trim()).map_err(|e| {
             ApiError::Transport(anyhow::anyhow!(
-                "{url} did not answer with a device id ({e}); is that really a pop server?"
+                "{url} did not answer with a device id ({e}); is that really a madelog server?"
             ))
         })?;
         if parsed.device_id.trim().is_empty() {
@@ -253,7 +253,7 @@ impl Client {
         }
         let parsed: PageResponse = serde_json::from_str(answer.trim()).map_err(|e| {
             ApiError::Transport(anyhow::anyhow!(
-                "{url} did not answer with a published page ({e}); is that really a pop server?"
+                "{url} did not answer with a published page ({e}); is that really a madelog server?"
             ))
         })?;
         Ok(parsed)
@@ -385,8 +385,11 @@ mod tests {
 
     #[test]
     fn a_bare_host_gets_https_and_loses_its_slash() {
-        assert_eq!(normalise_base("pop.dev"), "https://pop.dev");
-        assert_eq!(normalise_base("https://pop.dev/"), "https://pop.dev");
+        assert_eq!(normalise_base("madelog.app"), "https://madelog.app");
+        assert_eq!(
+            normalise_base("https://madelog.app/"),
+            "https://madelog.app"
+        );
         assert_eq!(
             normalise_base(" http://127.0.0.1:8080/ "),
             "http://127.0.0.1:8080"
@@ -411,7 +414,7 @@ mod tests {
     fn a_first_publish_omits_the_slug_field_entirely() {
         let (addr, seen) = serve_once(
             200,
-            r#"{"slug":"quiet-heron-k7m2","url":"https://pop.dev/p/quiet-heron-k7m2","verify_url":"https://pop.dev/v1/verify/quiet-heron-k7m2","received_at":"2026-09-17T14:05:01Z"}"#,
+            r#"{"slug":"quiet-heron-k7m2","url":"https://madelog.app/p/quiet-heron-k7m2","verify_url":"https://madelog.app/v1/verify/quiet-heron-k7m2","received_at":"2026-09-17T14:05:01Z"}"#,
         );
         let response = Client::new(&addr)
             .publish_page(&PageRequest {
@@ -428,7 +431,7 @@ mod tests {
         assert_eq!(response.slug, "quiet-heron-k7m2");
         assert_eq!(
             response.verify_url,
-            "https://pop.dev/v1/verify/quiet-heron-k7m2"
+            "https://madelog.app/v1/verify/quiet-heron-k7m2"
         );
 
         let request = seen.recv().unwrap();

@@ -1,4 +1,4 @@
-//! `pop` — record how your project came together, and prove it.
+//! `madelog` — record how your project came together, and prove it.
 //!
 //! The binary is a thin shell over this library so that integration tests can
 //! drive commands against a temporary repository without spawning a process.
@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-/// An error that carries the process exit code pop should use.
+/// An error that carries the process exit code madelog should use.
 #[derive(Debug, thiserror::Error)]
 #[error("{message}")]
 pub struct ExitError {
@@ -54,7 +54,7 @@ impl ExitError {
 /// Everything a command is allowed to touch: a directory, an input stream and
 /// an output stream. No globals, so tests stay honest.
 pub struct Ctx<'a> {
-    /// The directory pop was invoked from.
+    /// The directory madelog was invoked from.
     pub cwd: PathBuf,
     pub input: &'a mut dyn BufRead,
     pub out: &'a mut dyn Write,
@@ -98,17 +98,19 @@ impl Ctx<'_> {
         })
     }
 
-    /// The `.pop` directory of the repository containing [`Ctx::cwd`].
-    pub fn pop_dir(&self) -> Result<PathBuf> {
-        Ok(gitrepo::Repo::discover(&self.cwd)?.workdir()?.join(".pop"))
+    /// The `.madelog` directory of the repository containing [`Ctx::cwd`].
+    pub fn madelog_dir(&self) -> Result<PathBuf> {
+        Ok(gitrepo::Repo::discover(&self.cwd)?
+            .workdir()?
+            .join(".madelog"))
     }
 
-    /// Open the log, insisting that `pop init` has already run.
+    /// Open the log, insisting that `madelog init` has already run.
     pub fn open_store(&self) -> Result<store::Store> {
-        let db = self.pop_dir()?.join("log.db");
+        let db = self.madelog_dir()?.join("log.db");
         if !db.exists() {
             anyhow::bail!(
-                "no pop log in this repository yet — run `pop init` first ({} is missing)",
+                "no madelog log in this repository yet — run `madelog init` first ({} is missing)",
                 db.display()
             );
         }
@@ -116,7 +118,7 @@ impl Ctx<'_> {
     }
 }
 
-/// Run a command with pop's own stdin and stdout.
+/// Run a command with madelog's own stdin and stdout.
 pub fn run_in(root: &Path, args: &[&str]) -> Result<()> {
     let stdin = std::io::stdin();
     let mut input = stdin.lock();
@@ -153,13 +155,13 @@ fn run_ctx(root: &Path, args: &[&str], input: &mut dyn BufRead, out: &mut dyn Wr
     cli::dispatch(parsed, &mut ctx)
 }
 
-/// The path of the running `pop` binary, honouring `$POP_EXE`.
+/// The path of the running `madelog` binary, honouring `$MADELOG_EXE`.
 ///
-/// The per-project installer drops the binary at `<repo>/.pop/bin/pop`; the
-/// post-commit hook then has to call that path rather than whatever `pop`
+/// The per-project installer drops the binary at `<repo>/.madelog/bin/madelog`; the
+/// post-commit hook then has to call that path rather than whatever `madelog`
 /// happens to be on PATH.
 pub fn current_exe() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("POP_EXE") {
+    if let Some(p) = std::env::var_os("MADELOG_EXE") {
         if !p.is_empty() {
             return Some(PathBuf::from(p));
         }

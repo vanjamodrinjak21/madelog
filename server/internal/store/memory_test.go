@@ -3,8 +3,8 @@ package store_test
 import (
 	"testing"
 
-	"github.com/pop-dev/popserver/internal/store"
-	"github.com/pop-dev/popserver/internal/store/storetest"
+	"github.com/madelog/server/internal/store"
+	"github.com/madelog/server/internal/store/storetest"
 )
 
 func TestMemoryStoreConformance(t *testing.T) {

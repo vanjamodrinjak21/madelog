@@ -1,7 +1,7 @@
-//! `pop analyze` — find patterns in the log and record them as events.
+//! `madelog analyze` — find patterns in the log and record them as events.
 //!
 //! Analysis is append-only like everything else: a pattern that was already
-//! recorded is not recorded again, so running `pop analyze` twice leaves the
+//! recorded is not recorded again, so running `madelog analyze` twice leaves the
 //! log exactly as it was. Moments are derived on the spot and printed, never
 //! stored — the page rebuilds them from the events.
 

@@ -1,4 +1,4 @@
-module github.com/pop-dev/popserver
+module github.com/madelog/server
 
 go 1.27
 

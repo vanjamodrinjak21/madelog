@@ -1,9 +1,9 @@
-//! `pop publish` and `pop unpublish` against a real socket.
+//! `madelog publish` and `madelog unpublish` against a real socket.
 //!
 //! The server here is deliberately small and deliberately strict: it parses
 //! the HTTP by hand, rebuilds the byte string from `server/README.md` out of
 //! the fields it received, and verifies the ed25519 signature against the
-//! public key the device registered. If pop ever signs the wrong bytes, these
+//! public key the device registered. If madelog ever signs the wrong bytes, these
 //! tests fail rather than the user finding out at publish time.
 
 mod common;
@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 
 use common::*;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use pop::preview::{Key, Scripted};
+use madelog::preview::{Key, Scripted};
 
 // ---------------------------------------------------------------------------
 // the fake server
@@ -59,7 +59,7 @@ impl FakeServer {
             for stream in listener.incoming() {
                 let Ok(stream) = stream else { continue };
                 if let Err(err) = handle(stream, &shared) {
-                    eprintln!("fake pop server: {err}");
+                    eprintln!("fake madelog server: {err}");
                 }
             }
         });
@@ -261,12 +261,12 @@ fn verifies(public_key_hex: &str, message: &[u8], signature_hex: &str) -> bool {
 // a repository with something in it
 // ---------------------------------------------------------------------------
 
-/// `pop init`, `commits` commits through the hook, and one decision.
+/// `madelog init`, `commits` commits through the hook, and one decision.
 fn repo_with_history(commits: usize) -> TestRepo {
     let repo = init_repo();
-    init_pop(&repo);
+    init_madelog(&repo);
     // Keep the tests off the network and off any Ollama this machine may run.
-    pop::run_capture(repo.root(), &["config", "set", "llm.provider", "none"]).unwrap();
+    madelog::run_capture(repo.root(), &["config", "set", "llm.provider", "none"]).unwrap();
 
     for i in 0..commits {
         repo.write(
@@ -274,18 +274,18 @@ fn repo_with_history(commits: usize) -> TestRepo {
             &format!("pub fn step{i}() -> usize {{ {i} }}\n"),
         );
         repo.commit_all(&format!("feat: step {i}"));
-        pop::run_capture(repo.root(), &["hook", "post-commit"]).unwrap();
+        madelog::run_capture(repo.root(), &["hook", "post-commit"]).unwrap();
     }
-    pop::run_capture(repo.root(), &["note", "chose sqlite over a file per event"]).unwrap();
+    madelog::run_capture(repo.root(), &["note", "chose sqlite over a file per event"]).unwrap();
     repo
 }
 
-fn config_of(repo: &TestRepo) -> pop::config::Config {
-    pop::config::Config::load(&repo.path(".pop/config.toml")).unwrap()
+fn config_of(repo: &TestRepo) -> madelog::config::Config {
+    madelog::config::Config::load(&repo.path(".madelog/config.toml")).unwrap()
 }
 
 fn page_html(repo: &TestRepo) -> String {
-    std::fs::read_to_string(repo.path(".pop/site/index.html")).expect("the page was written")
+    std::fs::read_to_string(repo.path(".madelog/site/index.html")).expect("the page was written")
 }
 
 fn publish_body(server: &FakeServer, nth: usize) -> serde_json::Value {
@@ -301,7 +301,7 @@ fn publish_registers_signs_and_stores_the_slug() {
     let server = FakeServer::start();
     let repo = repo_with_history(3);
 
-    let out = pop::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url])
+    let out = madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url])
         .expect("publish");
 
     // The device registered first, then the page went up, then the same page
@@ -364,7 +364,7 @@ fn publish_registers_signs_and_stores_the_slug() {
     );
 
     // The root the server was told is the root of this repository's chain.
-    let chain_root = pop::store::Store::open(&repo.path(".pop/log.db"))
+    let chain_root = madelog::store::Store::open(&repo.path(".madelog/log.db"))
         .unwrap()
         .root()
         .unwrap();
@@ -427,10 +427,10 @@ fn a_second_publish_reuses_the_slug_and_signs_it() {
     let server = FakeServer::start();
     let repo = repo_with_history(3);
 
-    pop::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap();
+    madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap();
     let slug = config_of(&repo).server.slug.unwrap();
 
-    pop::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap();
+    madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap();
 
     // [0] and [1] are the first publish and its confirmation; [2] is the
     // second publish, which knows the slug before it sends anything.
@@ -468,13 +468,13 @@ fn local_writes_the_page_and_never_touches_the_network() {
     let server = FakeServer::start();
     let repo = repo_with_history(2);
 
-    let out = pop::run_capture(
+    let out = madelog::run_capture(
         repo.root(),
         &["publish", "--local", "--yes", "--server", &server.url],
     )
     .expect("local publish");
 
-    assert!(repo.path(".pop/site/index.html").is_file());
+    assert!(repo.path(".madelog/site/index.html").is_file());
     assert!(out.contains("index.html"), "{out}");
     assert!(out.contains("not published"), "{out}");
     assert!(
@@ -490,7 +490,7 @@ fn a_thin_project_is_warned_about_and_published_anyway() {
     let server = FakeServer::start();
     let repo = repo_with_history(1);
 
-    let out = pop::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url])
+    let out = madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url])
         .expect("a thin project still publishes");
 
     assert!(out.contains("warning:"), "{out}");
@@ -508,7 +508,7 @@ fn a_project_with_enough_in_it_is_not_warned_about() {
     let server = FakeServer::start();
     let repo = repo_with_history(16);
 
-    let out = pop::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url])
+    let out = madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url])
         .expect("publish");
     assert!(!out.contains("says very little"), "{out}");
 }
@@ -520,14 +520,14 @@ fn aborting_the_preview_exits_one_and_sends_nothing() {
 
     let mut out: Vec<u8> = Vec::new();
     let mut input = std::io::empty();
-    let mut ctx = pop::Ctx {
+    let mut ctx = madelog::Ctx {
         cwd: repo.root().to_path_buf(),
         input: &mut input,
         out: &mut out,
     };
-    let err = pop::commands::publish::run_with(
+    let err = madelog::commands::publish::run_with(
         &mut ctx,
-        pop::commands::publish::Options {
+        madelog::commands::publish::Options {
             local: false,
             server: Some(server.url.clone()),
             yes: false,
@@ -544,7 +544,7 @@ fn aborting_the_preview_exits_one_and_sends_nothing() {
         server.requests()
     );
     assert!(
-        !repo.path(".pop/site/index.html").exists(),
+        !repo.path(".madelog/site/index.html").exists(),
         "an aborted publish does not even render"
     );
 }
@@ -556,14 +556,14 @@ fn confirming_the_preview_publishes() {
 
     let mut out: Vec<u8> = Vec::new();
     let mut input = std::io::empty();
-    let mut ctx = pop::Ctx {
+    let mut ctx = madelog::Ctx {
         cwd: repo.root().to_path_buf(),
         input: &mut input,
         out: &mut out,
     };
-    pop::commands::publish::run_with(
+    madelog::commands::publish::run_with(
         &mut ctx,
-        pop::commands::publish::Options {
+        madelog::commands::publish::Options {
             local: false,
             server: Some(server.url.clone()),
             yes: false,
@@ -587,7 +587,7 @@ fn without_a_terminal_the_preview_is_skipped_and_publish_goes_through() {
 
     let mut out: Vec<u8> = Vec::new();
     let mut input = std::io::empty();
-    let mut ctx = pop::Ctx {
+    let mut ctx = madelog::Ctx {
         cwd: repo.root().to_path_buf(),
         input: &mut input,
         out: &mut out,
@@ -597,9 +597,9 @@ fn without_a_terminal_the_preview_is_skipped_and_publish_goes_through() {
     // proves it did not.
     let mut screen = Scripted::abort();
     screen.available = false;
-    pop::commands::publish::run_with(
+    madelog::commands::publish::run_with(
         &mut ctx,
-        pop::commands::publish::Options {
+        madelog::commands::publish::Options {
             local: false,
             server: Some(server.url.clone()),
             yes: false,
@@ -617,13 +617,13 @@ fn without_a_terminal_the_preview_is_skipped_and_publish_goes_through() {
 
 #[test]
 fn hiding_a_session_in_the_preview_is_recorded_before_the_page_is_rendered() {
-    use pop::event::{AiSessionPayload, EventKind, HidePayload, Payload};
+    use madelog::event::{AiSessionPayload, EventKind, HidePayload, Payload};
 
     let server = FakeServer::start();
     let repo = repo_with_history(2);
 
     // Give the log an AI session to hide.
-    let store = pop::store::Store::open(&repo.path(".pop/log.db")).unwrap();
+    let store = madelog::store::Store::open(&repo.path(".madelog/log.db")).unwrap();
     let session = store
         .append_payload(
             None,
@@ -642,16 +642,16 @@ fn hiding_a_session_in_the_preview_is_recorded_before_the_page_is_rendered() {
 
     let mut out: Vec<u8> = Vec::new();
     let mut input = std::io::empty();
-    let mut ctx = pop::Ctx {
+    let mut ctx = madelog::Ctx {
         cwd: repo.root().to_path_buf(),
         input: &mut input,
         out: &mut out,
     };
     // Walk down to the session (two commits, one decision, then the session)
     // and hide it, then publish.
-    pop::commands::publish::run_with(
+    madelog::commands::publish::run_with(
         &mut ctx,
-        pop::commands::publish::Options {
+        madelog::commands::publish::Options {
             local: true,
             server: None,
             yes: false,
@@ -682,13 +682,13 @@ fn a_forgotten_device_is_registered_again_and_the_publish_retried() {
     let repo = repo_with_history(3);
 
     // Publish once so the config carries a device id.
-    pop::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap();
+    madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap();
     assert!(config_of(&repo).server.device_id.is_some());
 
     // Now the server forgets it, once.
     server.forget_the_device_once();
-    pop::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url])
-        .expect("pop registers again and retries");
+    madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url])
+        .expect("madelog registers again and retries");
 
     let calls: Vec<String> = server
         .requests()
@@ -719,7 +719,7 @@ fn a_failed_confirmation_is_a_warning_because_the_page_is_already_online() {
     let repo = repo_with_history(3);
     server.break_the_confirmation();
 
-    let out = pop::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url])
+    let out = madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url])
         .expect("a broken confirmation does not fail the publish");
 
     assert!(out.contains("warning:"), "{out}");
@@ -744,12 +744,12 @@ fn unpublish_sends_a_valid_delete_signature_and_forgets_the_slug() {
     let server = FakeServer::start();
     let repo = repo_with_history(3);
 
-    pop::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap();
+    madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap();
     let slug = config_of(&repo).server.slug.unwrap();
     assert_eq!(server.pages().len(), 1);
 
-    let out =
-        pop::run_capture(repo.root(), &["unpublish", "--server", &server.url]).expect("unpublish");
+    let out = madelog::run_capture(repo.root(), &["unpublish", "--server", &server.url])
+        .expect("unpublish");
 
     let deletes: Vec<Seen> = server
         .requests()
@@ -792,19 +792,20 @@ fn unpublish_without_a_published_page_says_so() {
     let server = FakeServer::start();
     let repo = repo_with_history(1);
 
-    let err = pop::run_capture(repo.root(), &["unpublish", "--server", &server.url]).unwrap_err();
+    let err =
+        madelog::run_capture(repo.root(), &["unpublish", "--server", &server.url]).unwrap_err();
     assert!(format!("{err:#}").contains("no published page"), "{err:#}");
     assert!(server.requests().is_empty());
 }
 
 #[test]
-fn publish_outside_a_pop_repository_refuses() {
+fn publish_outside_a_madelog_repository_refuses() {
     let repo = init_repo();
     isolate_device_key();
-    let err = pop::run_capture(repo.root(), &["publish", "--local", "--yes"]).unwrap_err();
+    let err = madelog::run_capture(repo.root(), &["publish", "--local", "--yes"]).unwrap_err();
     let text = format!("{err:#}");
-    assert!(text.contains("no pop log"), "{text}");
-    assert!(text.contains("pop init"), "{text}");
+    assert!(text.contains("no madelog log"), "{text}");
+    assert!(text.contains("madelog init"), "{text}");
 }
 
 #[test]
@@ -813,16 +814,16 @@ fn a_server_that_refuses_the_signature_is_explained_in_plain_english() {
     let repo = repo_with_history(3);
 
     // Register a device, then point the config at a device id that exists but
-    // belongs to a key pop does not have.
-    pop::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap();
+    // belongs to a key madelog does not have.
+    madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap();
     {
         let mut state = server.state.lock().unwrap();
         let id = state.devices.keys().next().unwrap().clone();
         state.devices.insert(id, "ab".repeat(32));
     }
 
-    let err =
-        pop::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap_err();
+    let err = madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url])
+        .unwrap_err();
     let text = format!("{err:#}");
     assert!(text.contains("signature"), "{text}");
     assert!(text.contains("device.key"), "{text}");
@@ -836,11 +837,12 @@ fn nothing_listening_leaves_the_page_on_disk_and_says_why() {
         format!("http://{}", listener.local_addr().unwrap())
     };
 
-    let err = pop::run_capture(repo.root(), &["publish", "--yes", "--server", &dead]).unwrap_err();
+    let err =
+        madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &dead]).unwrap_err();
     let text = format!("{err:#}");
     assert!(text.contains("could not reach"), "{text}");
     assert!(
-        repo.path(".pop/site/index.html").is_file(),
+        repo.path(".madelog/site/index.html").is_file(),
         "the page is written before the upload is attempted"
     );
 }

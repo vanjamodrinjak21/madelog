@@ -1,4 +1,4 @@
-//! `pop verify` — recompute the chain from the first event.
+//! `madelog verify` — recompute the chain from the first event.
 
 use anyhow::Result;
 

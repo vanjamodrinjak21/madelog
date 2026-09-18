@@ -19,7 +19,7 @@ Example: `feature/summary-editing`. Never force-push to `main`.
 Conventional commits, one concern per commit:
 
 ```
-feat: add pop summary edit
+feat: add madelog summary edit
 fix: keep the post-commit hook silent when Git AI notes are missing
 chore: bump rusqlite to 0.32
 docs: describe the verification badge
@@ -71,7 +71,7 @@ with empty values. Deployment secrets live in the hosting provider, not in the r
 
 ## Privacy rules that are not negotiable
 
-pop records only what the spec says it records: git history, Git AI notes, and what you type
-into `pop note`. No keystrokes, no screenshots, no ignored or untracked files, nothing outside
-the repository. If a change would send anything to the network outside of `pop publish`, it does
+madelog records only what the spec says it records: git history, Git AI notes, and what you type
+into `madelog note`. No keystrokes, no screenshots, no ignored or untracked files, nothing outside
+the repository. If a change would send anything to the network outside of `madelog publish`, it does
 not belong in this project.

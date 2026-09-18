@@ -1,12 +1,12 @@
-//! `pop publish` and `pop unpublish` — the only two commands that talk to a
+//! `madelog publish` and `madelog unpublish` — the only two commands that talk to a
 //! network, and the only moment anything leaves this machine (spec §7).
 //!
 //! The order is fixed, and it matters:
 //!
-//! 1. refuse outside a repository pop knows,
+//! 1. refuse outside a repository madelog knows,
 //! 2. bring patterns and summaries up to date, so the page is about today,
 //! 3. show the preview and let it change the log (hide, edit),
-//! 4. render `.pop/site/index.html` — always, so `--local` has produced
+//! 4. render `.madelog/site/index.html` — always, so `--local` has produced
 //!    something even when the network is down,
 //! 5. sign the chain root and POST the page, then render it once more with the
 //!    server's confirmation in the badge and POST that to the same slug, so
@@ -39,7 +39,7 @@ pub struct UnpublishOptions {
     pub server: Option<String>,
 }
 
-/// `pop publish [--local] [--server <url>] [--yes]`.
+/// `madelog publish [--local] [--server <url>] [--yes]`.
 pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
     let mut screen = preview::default_preview();
     run_with(ctx, opts, screen.as_mut())
@@ -75,14 +75,14 @@ pub fn run_with(ctx: &mut Ctx<'_>, opts: Options, screen: &mut dyn Preview) -> R
     let path = page::render_local(&root, None)?;
     ctx.say(&format!("page   {}", path.display()))?;
     if opts.local {
-        ctx.say("not published. Run `pop publish` without --local to put it online.")?;
+        ctx.say("not published. Run `madelog publish` without --local to put it online.")?;
         return Ok(());
     }
 
     upload(ctx, &root, &path, opts.server.as_deref())
 }
 
-/// `pop unpublish` — take the page down, keep the chain.
+/// `madelog unpublish` — take the page down, keep the chain.
 pub fn unpublish(ctx: &mut Ctx<'_>, opts: UnpublishOptions) -> Result<()> {
     let root = project_root(ctx)?;
     let config_path = config_path(&root);
@@ -90,8 +90,8 @@ pub fn unpublish(ctx: &mut Ctx<'_>, opts: UnpublishOptions) -> Result<()> {
 
     let Some(slug) = present(config.server.slug.clone()) else {
         bail!(
-            "this repository has no published page. `pop publish` first, or check \
-             `pop config get server.slug`."
+            "this repository has no published page. `madelog publish` first, or check \
+             `madelog config get server.slug`."
         );
     };
 
@@ -110,7 +110,7 @@ pub fn unpublish(ctx: &mut Ctx<'_>, opts: UnpublishOptions) -> Result<()> {
     config.save(&config_path)?;
 
     ctx.say(&format!(
-        "{slug} is gone from {}. The chain is untouched, and `pop publish` can put it back.",
+        "{slug} is gone from {}. The chain is untouched, and `madelog publish` can put it back.",
         client.base()
     ))?;
     Ok(())
@@ -120,16 +120,16 @@ pub fn unpublish(ctx: &mut Ctx<'_>, opts: UnpublishOptions) -> Result<()> {
 // steps
 // ---------------------------------------------------------------------------
 
-/// Step 1. `pop publish` outside a repository pop has recorded is a mistake,
+/// Step 1. `madelog publish` outside a repository madelog has recorded is a mistake,
 /// not a thing to guess at.
 fn project_root(ctx: &Ctx<'_>) -> Result<PathBuf> {
     let root = crate::gitrepo::Repo::discover(&ctx.cwd)
-        .context("`pop publish` runs inside a git repository")?
+        .context("`madelog publish` runs inside a git repository")?
         .workdir()?;
-    if !root.join(".pop").join("log.db").exists() {
+    if !root.join(".madelog").join("log.db").exists() {
         bail!(
-            "there is no pop log in {} — run `pop init` first, then commit something. \
-             `pop publish` has nothing to publish until then.",
+            "there is no madelog log in {} — run `madelog init` first, then commit something. \
+             `madelog publish` has nothing to publish until then.",
             root.display()
         );
     }
@@ -229,7 +229,7 @@ fn upload(ctx: &mut Ctx<'_>, root: &Path, page_path: &Path, server: Option<&str>
     ctx.say(&format!("verify {verify_url}"))?;
     ctx.blank()?;
     ctx.say(&format!("published  {url}"))?;
-    ctx.say("Send that link. `pop unpublish` takes it down again.")?;
+    ctx.say("Send that link. `madelog unpublish` takes it down again.")?;
     Ok(())
 }
 
@@ -237,7 +237,7 @@ fn upload(ctx: &mut Ctx<'_>, root: &Path, page_path: &Path, server: Option<&str>
 ///
 /// The page is already online at this point, so nothing here is fatal. A
 /// failure leaves the visitor looking at the unconfirmed badge, which is worth
-/// a warning and another `pop publish`, not a non-zero exit.
+/// a warning and another `madelog publish`, not a non-zero exit.
 fn confirm(
     ctx: &mut Ctx<'_>,
     client: &publish::Client,
@@ -271,7 +271,7 @@ fn confirm(
 fn warn(ctx: &mut Ctx<'_>, why: &str) -> Result<()> {
     ctx.say(&format!(
         "warning: the page is online, but the confirmed badge could not be sent to it ({why}). \
-         Visitors see \"not yet published\" until the next `pop publish`."
+         Visitors see \"not yet published\" until the next `madelog publish`."
     ))
 }
 
@@ -288,7 +288,7 @@ struct Facts {
 
 impl Facts {
     fn read(root: &Path) -> Result<Facts> {
-        let store = Store::open(&root.join(".pop").join("log.db"))?;
+        let store = Store::open(&root.join(".madelog").join("log.db"))?;
         let events = store.all()?;
         let now = now_rfc3339();
         Ok(Facts {
@@ -303,12 +303,12 @@ impl Facts {
 }
 
 /// The server answers 413 above 2 MB. Finding that out after uploading two
-/// megabytes is rude, so pop says it first, locally.
+/// megabytes is rude, so madelog says it first, locally.
 fn check_size(bytes: usize, page_path: &Path) -> Result<()> {
     if bytes > MAX_HTML_BYTES {
         bail!(
             "the page is {} and the server accepts {} at most. It is written at {}; \
-             hide a session or two with `pop hide` and publish again.",
+             hide a session or two with `madelog hide` and publish again.",
             megabytes(bytes),
             megabytes(MAX_HTML_BYTES),
             page_path.display()
@@ -318,11 +318,11 @@ fn check_size(bytes: usize, page_path: &Path) -> Result<()> {
 }
 
 fn count_events(root: &Path) -> Result<usize> {
-    Store::open(&root.join(".pop").join("log.db"))?.count()
+    Store::open(&root.join(".madelog").join("log.db"))?.count()
 }
 
 fn config_path(root: &Path) -> PathBuf {
-    root.join(".pop").join("config.toml")
+    root.join(".madelog").join("config.toml")
 }
 
 /// `--server` wins over `server.url`; neither is allowed to be empty.
@@ -333,8 +333,8 @@ fn server_url(config: &Config, flag: Option<&str>) -> Result<String> {
         .unwrap_or_else(|| config.server.url.clone());
     if chosen.trim().is_empty() {
         bail!(
-            "no server to publish to. Set one with `pop config set server.url <url>`, \
-             pass `--server <url>`, or stay offline with `pop publish --local`."
+            "no server to publish to. Set one with `madelog config set server.url <url>`, \
+             pass `--server <url>`, or stay offline with `madelog publish --local`."
         );
     }
     Ok(chosen)
@@ -360,13 +360,16 @@ mod tests {
     #[test]
     fn the_flag_beats_the_config_and_an_empty_one_does_not() {
         let mut config = Config::default();
-        config.server.url = "https://pop.dev".into();
+        config.server.url = "https://madelog.app".into();
         assert_eq!(
             server_url(&config, Some("http://127.0.0.1:9")).unwrap(),
             "http://127.0.0.1:9"
         );
-        assert_eq!(server_url(&config, Some("  ")).unwrap(), "https://pop.dev");
-        assert_eq!(server_url(&config, None).unwrap(), "https://pop.dev");
+        assert_eq!(
+            server_url(&config, Some("  ")).unwrap(),
+            "https://madelog.app"
+        );
+        assert_eq!(server_url(&config, None).unwrap(), "https://madelog.app");
 
         config.server.url = String::new();
         let err = server_url(&config, None).unwrap_err();
@@ -384,13 +387,13 @@ mod tests {
 
     #[test]
     fn a_page_over_two_megabytes_is_refused_before_it_is_uploaded() {
-        let path = Path::new("/tmp/.pop/site/index.html");
+        let path = Path::new("/tmp/.madelog/site/index.html");
         check_size(MAX_HTML_BYTES, path).expect("exactly 2 MiB is allowed");
         let err = check_size(MAX_HTML_BYTES + 1, path).unwrap_err();
         let text = format!("{err:#}");
         assert!(text.contains("2.0 MB"), "{text}");
         assert!(text.contains("index.html"), "{text}");
-        assert!(text.contains("pop hide"), "{text}");
+        assert!(text.contains("madelog hide"), "{text}");
     }
 
     #[test]

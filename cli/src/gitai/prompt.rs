@@ -16,7 +16,7 @@ use serde_json::Value;
 use crate::gitrepo::ExcerptFilter;
 
 /// Overrides `~/.claude/projects`, so tests never read a real transcript.
-pub const PROJECTS_DIR_ENV: &str = "POP_CLAUDE_PROJECTS_DIR";
+pub const PROJECTS_DIR_ENV: &str = "MADELOG_CLAUDE_PROJECTS_DIR";
 
 /// The page shows a prompt, not a transcript.
 pub const MAX_PROMPT_CHARS: usize = 500;

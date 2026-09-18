@@ -1,4 +1,4 @@
-//! `pop summarize` and `pop summary edit` — weekly summaries (spec §4.3).
+//! `madelog summarize` and `madelog summary edit` — weekly summaries (spec §4.3).
 //!
 //! Summaries are events like everything else: they are appended, never
 //! rewritten. Regenerating a week adds a new summary event, editing one adds
@@ -14,15 +14,15 @@ use crate::event::{EventKind, Payload, SummaryPayload};
 use crate::summarize::{self, Week};
 use crate::Ctx;
 
-/// `pop summarize [--week N] [--force]`.
+/// `madelog summarize [--week N] [--force]`.
 pub fn run(ctx: &mut Ctx<'_>, week: Option<u32>, force: bool) -> Result<()> {
     let store = ctx.open_store()?;
-    let config = Config::load(&ctx.pop_dir()?.join("config.toml"))?;
+    let config = Config::load(&ctx.madelog_dir()?.join("config.toml"))?;
     let events = store.all()?;
 
     let weeks = summarize::bucket(&events);
     if weeks.is_empty() {
-        ctx.say("nothing to summarise yet — pop counts weeks from your first commit")?;
+        ctx.say("nothing to summarise yet — madelog counts weeks from your first commit")?;
         return Ok(());
     }
 
@@ -49,7 +49,7 @@ pub fn run(ctx: &mut Ctx<'_>, week: Option<u32>, force: bool) -> Result<()> {
 
     if todo.is_empty() {
         ctx.say(
-            "every week already has a summary — run `pop summarize --force` to write them again",
+            "every week already has a summary — run `madelog summarize --force` to write them again",
         )?;
         return Ok(());
     }
@@ -90,11 +90,11 @@ pub fn run(ctx: &mut Ctx<'_>, week: Option<u32>, force: bool) -> Result<()> {
         ctx.blank()?;
     }
 
-    ctx.say("edit any of them with `pop summary edit <id>`")?;
+    ctx.say("edit any of them with `madelog summary edit <id>`")?;
     Ok(())
 }
 
-/// `pop summary edit <event-id>` — your words replace the generated ones.
+/// `madelog summary edit <event-id>` — your words replace the generated ones.
 pub fn edit(ctx: &mut Ctx<'_>, event_id: &str) -> Result<()> {
     let store = ctx.open_store()?;
     let Some(target) = store.by_id(event_id)? else {
@@ -102,7 +102,7 @@ pub fn edit(ctx: &mut Ctx<'_>, event_id: &str) -> Result<()> {
     };
     if target.kind != EventKind::Summary {
         bail!(
-            "`pop summary edit` takes a summary event; event `{event_id}` is a {}",
+            "`madelog summary edit` takes a summary event; event `{event_id}` is a {}",
             target.kind
         );
     }
@@ -141,10 +141,10 @@ pub fn edit(ctx: &mut Ctx<'_>, event_id: &str) -> Result<()> {
 
 /// Open the text in an editor and hand back what came out.
 ///
-/// `POP_EDITOR=stdin` reads the new text from pop's own input instead, which
+/// `MADELOG_EDITOR=stdin` reads the new text from madelog's own input instead, which
 /// is how the tests edit a summary without a terminal.
 fn edit_text(ctx: &mut Ctx<'_>, original: &str) -> Result<String> {
-    let chosen = std::env::var("POP_EDITOR")
+    let chosen = std::env::var("MADELOG_EDITOR")
         .ok()
         .filter(|v| !v.trim().is_empty());
     if chosen.as_deref() == Some("stdin") {
@@ -155,7 +155,7 @@ fn edit_text(ctx: &mut Ctx<'_>, original: &str) -> Result<String> {
         return Ok(text);
     }
 
-    let path = std::env::temp_dir().join(format!("pop-summary-{}.md", crate::event::new_id()));
+    let path = std::env::temp_dir().join(format!("madelog-summary-{}.md", crate::event::new_id()));
     std::fs::write(&path, original).with_context(|| format!("writing {}", path.display()))?;
 
     let editor = chosen
