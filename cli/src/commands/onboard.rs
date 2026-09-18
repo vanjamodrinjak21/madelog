@@ -1,11 +1,19 @@
 //! `pop onboard` — what the install script runs last, and what you can run
 //! again any time. Spec §6.1.
 
+use std::io::IsTerminal;
+
 use anyhow::Result;
 
 use crate::commands::init;
 use crate::gitrepo::Repo;
 use crate::Ctx;
+
+/// The brand's terminal banner (`design/brand/terminal/`): the mark in
+/// box-drawing characters, printed once before the three explaining lines.
+const BANNER: &str = include_str!("../../../design/brand/terminal/banner.txt");
+/// The same banner in plain ASCII for terminals that cannot draw boxes.
+const BANNER_ASCII: &str = include_str!("../../../design/brand/terminal/banner-ascii.txt");
 
 /// The tools pop cooperates with, and where to get them.
 const TOOLS: &[(&str, &str, &str)] = &[
@@ -27,6 +35,7 @@ const TOOLS: &[(&str, &str, &str)] = &[
 ];
 
 pub fn run(ctx: &mut Ctx<'_>, project: bool, yes: bool) -> Result<()> {
+    banner(ctx)?;
     explain(ctx)?;
     check_tools(ctx)?;
     ctx.blank()?;
@@ -65,6 +74,41 @@ pub fn run(ctx: &mut Ctx<'_>, project: bool, yes: bool) -> Result<()> {
             ..Default::default()
         },
     )
+}
+
+/// Print the banner exactly as stored, one colour, no padding. The box-drawing
+/// version needs a real terminal that speaks UTF-8; everything else gets ASCII.
+fn banner(ctx: &mut Ctx<'_>) -> Result<()> {
+    let text = if box_drawing_is_safe() {
+        BANNER
+    } else {
+        BANNER_ASCII
+    };
+    ctx.out
+        .write_all(text.as_bytes())
+        .map_err(anyhow::Error::from)?;
+    ctx.blank()
+}
+
+fn box_drawing_is_safe() -> bool {
+    if !std::io::stdout().is_terminal() {
+        return false;
+    }
+    if std::env::var("TERM").is_ok_and(|t| t == "dumb") {
+        return false;
+    }
+    if cfg!(windows) {
+        // Windows Terminal renders the glyphs; the legacy console may not.
+        return std::env::var_os("WT_SESSION").is_some();
+    }
+    // A locale that does not name UTF-8 may render the glyphs as garbage.
+    ["LC_ALL", "LC_CTYPE", "LANG"]
+        .iter()
+        .find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty()))
+        .is_some_and(|v| {
+            let v = v.to_ascii_lowercase();
+            v.contains("utf-8") || v.contains("utf8")
+        })
 }
 
 fn explain(ctx: &mut Ctx<'_>) -> Result<()> {
