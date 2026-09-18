@@ -12,6 +12,7 @@ pub mod gitai;
 pub mod gitrepo;
 pub mod keys;
 pub mod moments;
+pub mod page;
 pub mod patterns;
 pub mod store;
 pub mod summarize;
