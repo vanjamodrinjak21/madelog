@@ -39,6 +39,9 @@ struct State {
     /// Answer the next `POST /v1/pages` with 404, as a server with a fresh
     /// database would.
     forget_device_once: bool,
+    /// Fall over on the next upload that carries a slug — that is, on the
+    /// confirmation that follows a successful first publish.
+    break_the_confirmation: bool,
 }
 
 struct FakeServer {
@@ -73,6 +76,10 @@ impl FakeServer {
 
     fn forget_the_device_once(&self) {
         self.state.lock().unwrap().forget_device_once = true;
+    }
+
+    fn break_the_confirmation(&self) {
+        self.state.lock().unwrap().break_the_confirmation = true;
     }
 
     fn requests_to(&self, path: &str) -> Vec<Seen> {
@@ -168,6 +175,9 @@ fn route(state: &mut State, method: &str, path: &str, body: &serde_json::Value) 
             let message = format!("{root}\n{published_ts}\n{slug_sent}");
             if !verifies(&public_key, message.as_bytes(), &field("signature")) {
                 return (401, error("bad_signature"));
+            }
+            if !slug_sent.is_empty() && std::mem::take(&mut state.break_the_confirmation) {
+                return (500, error("having_a_moment"));
             }
             if field("html").len() > 2 * 1024 * 1024 {
                 return (413, error("too_large"));
@@ -294,7 +304,8 @@ fn publish_registers_signs_and_stores_the_slug() {
     let out = pop::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url])
         .expect("publish");
 
-    // The device registered first, then the page went up.
+    // The device registered first, then the page went up, then the same page
+    // went up again with the badge the server's answer made possible.
     let calls: Vec<String> = server
         .requests()
         .iter()
@@ -302,8 +313,8 @@ fn publish_registers_signs_and_stores_the_slug() {
         .collect();
     assert_eq!(
         calls,
-        vec!["POST /v1/devices", "POST /v1/pages"],
-        "one registration, one publish"
+        vec!["POST /v1/devices", "POST /v1/pages", "POST /v1/pages"],
+        "one registration, one publish, one confirmation"
     );
 
     // The registration carries the device's public key and nothing else.
@@ -365,8 +376,39 @@ fn publish_registers_signs_and_stores_the_slug() {
     assert!(html.contains(&slug), "the badge carries the slug: {slug}");
     assert!(
         !body["html"].as_str().unwrap().contains(&slug),
-        "the copy that was uploaded was rendered before the slug existed"
+        "the first upload was rendered before the slug existed"
     );
+
+    // The confirmation carries the slug, is signed over those very bytes, and
+    // is what the server ends up serving at /p/{slug}.
+    let confirmation = publish_body(&server, 1);
+    assert_eq!(confirmation["slug"].as_str(), Some(slug.as_str()));
+    assert!(
+        verifies(
+            public_key,
+            format!(
+                "{}\n{}\n{slug}",
+                confirmation["root"].as_str().unwrap(),
+                confirmation["published_ts"].as_str().unwrap()
+            )
+            .as_bytes(),
+            confirmation["signature"].as_str().unwrap()
+        ),
+        "the confirmation signs the slug it was just given"
+    );
+    assert_eq!(
+        confirmation["root"].as_str(),
+        body["root"].as_str(),
+        "the same chain root, because nothing was appended in between"
+    );
+
+    let verify_url = format!("https://pages.test/v1/verify/{slug}");
+    let stored = server.pages()[&slug].1.clone();
+    assert!(
+        stored.contains(&verify_url),
+        "what /p/{slug} serves carries the confirmed badge, not \"not yet published\""
+    );
+    assert_eq!(stored, html, "the served page is the page on disk");
 
     // And the repository remembers who it is and what it owns.
     let config = config_of(&repo);
@@ -390,7 +432,10 @@ fn a_second_publish_reuses_the_slug_and_signs_it() {
 
     pop::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap();
 
-    let second = publish_body(&server, 1);
+    // [0] and [1] are the first publish and its confirmation; [2] is the
+    // second publish, which knows the slug before it sends anything.
+    assert_eq!(server.requests_to("/v1/pages").len(), 4);
+    let second = publish_body(&server, 2);
     assert_eq!(second["slug"].as_str(), Some(slug.as_str()), "same page");
     let message = format!(
         "{}\n{}\n{slug}",
@@ -451,7 +496,11 @@ fn a_thin_project_is_warned_about_and_published_anyway() {
     assert!(out.contains("warning:"), "{out}");
     assert!(out.contains("says very little"), "{out}");
     assert!(out.contains("still publish"), "{out}");
-    assert_eq!(server.requests_to("/v1/pages").len(), 1, "it published");
+    assert_eq!(
+        server.requests_to("/v1/pages").len(),
+        2,
+        "it published, then confirmed"
+    );
 }
 
 #[test]
@@ -523,7 +572,11 @@ fn confirming_the_preview_publishes() {
     )
     .expect("confirming publishes");
 
-    assert_eq!(server.requests_to("/v1/pages").len(), 1);
+    assert_eq!(
+        server.requests_to("/v1/pages").len(),
+        2,
+        "the publish and its confirmation"
+    );
     assert!(config_of(&repo).server.slug.is_some());
 }
 
@@ -555,7 +608,11 @@ fn without_a_terminal_the_preview_is_skipped_and_publish_goes_through() {
     )
     .expect("no terminal means no preview, not no publish");
 
-    assert_eq!(server.requests_to("/v1/pages").len(), 1);
+    assert_eq!(
+        server.requests_to("/v1/pages").len(),
+        2,
+        "the publish and its confirmation"
+    );
 }
 
 #[test]
@@ -641,15 +698,45 @@ fn a_forgotten_device_is_registered_again_and_the_publish_retried() {
     assert_eq!(
         calls,
         vec![
+            // The first publish: register, publish, confirm.
             "POST /v1/devices",
             "POST /v1/pages",
             "POST /v1/pages",
+            // The second: a 404, then register, publish, confirm.
+            "POST /v1/pages",
             "POST /v1/devices",
+            "POST /v1/pages",
             "POST /v1/pages",
         ],
         "the 404 is answered by registering again and sending the page once more"
     );
     assert_eq!(server.pages().len(), 1);
+}
+
+#[test]
+fn a_failed_confirmation_is_a_warning_because_the_page_is_already_online() {
+    let server = FakeServer::start();
+    let repo = repo_with_history(3);
+    server.break_the_confirmation();
+
+    let out = pop::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url])
+        .expect("a broken confirmation does not fail the publish");
+
+    assert!(out.contains("warning:"), "{out}");
+    assert!(out.contains("not yet published"), "{out}");
+    assert!(out.contains("published  https://pages.test/p/"), "{out}");
+
+    // The slug is still recorded, so the next publish confirms it.
+    let slug = config_of(&repo).server.slug.expect("the slug was kept");
+    assert!(
+        page_html(&repo).contains(&slug),
+        "the local page still got the badge"
+    );
+    assert!(
+        !server.pages()[&slug].1.contains(&slug),
+        "the server kept the unconfirmed upload, and says so in the warning"
+    );
+    assert_eq!(server.requests_to("/v1/pages").len(), 2);
 }
 
 #[test]

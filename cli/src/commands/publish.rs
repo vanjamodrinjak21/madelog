@@ -9,10 +9,13 @@
 //! 4. render `.pop/site/index.html` — always, so `--local` has produced
 //!    something even when the network is down,
 //! 5. sign the chain root and POST the page, then render it once more with the
-//!    server's confirmation in the badge.
+//!    server's confirmation in the badge and POST that to the same slug, so
+//!    the page the company opens carries the badge rather than a draft.
 //!
 //! Nothing between step 3 and step 5 appends to the log, so the root the page
-//! shows is the root that gets signed.
+//! shows is the root that gets signed — both times. The second upload is the
+//! only part of this that is allowed to fail quietly: by then the page is
+//! already public, and a warning beats a non-zero exit.
 
 use std::path::{Path, PathBuf};
 
@@ -217,12 +220,59 @@ fn upload(ctx: &mut Ctx<'_>, root: &Path, page_path: &Path, server: Option<&str>
         }),
     )?;
 
+    // The first upload could only carry "not yet published" — the slug did not
+    // exist when it was rendered. Send the confirmed page over the top of it,
+    // so what the company opens is the page with the badge, not the draft.
+    confirm(ctx, &client, &key, &mut request, &response.slug, &path)?;
+
     ctx.say(&format!("page   {}", path.display()))?;
     ctx.say(&format!("verify {verify_url}"))?;
     ctx.blank()?;
     ctx.say(&format!("published  {url}"))?;
     ctx.say("Send that link. `pop unpublish` takes it down again.")?;
     Ok(())
+}
+
+/// Step 5b: re-publish the confirmed page to the slug it just got.
+///
+/// The page is already online at this point, so nothing here is fatal. A
+/// failure leaves the visitor looking at the unconfirmed badge, which is worth
+/// a warning and another `pop publish`, not a non-zero exit.
+fn confirm(
+    ctx: &mut Ctx<'_>,
+    client: &publish::Client,
+    key: &DeviceKey,
+    request: &mut PageRequest,
+    slug: &str,
+    page_path: &Path,
+) -> Result<()> {
+    let html = match std::fs::read_to_string(page_path) {
+        Ok(html) => html,
+        Err(e) => return warn(ctx, &format!("reading {}: {e}", page_path.display())),
+    };
+    if let Err(e) = check_size(html.len(), page_path) {
+        return warn(ctx, &format!("{e:#}"));
+    }
+
+    // Same root, same timestamps, now with the slug the server minted — and a
+    // signature over exactly those bytes.
+    request.html = html;
+    request.slug = Some(slug.to_string());
+    request.signature = key
+        .sign_hex(publish::publish_message(&request.root, &request.published_ts, slug).as_bytes());
+
+    match client.publish_page(request) {
+        Ok(_) => Ok(()),
+        Err(e) => warn(ctx, &format!("{e}")),
+    }
+}
+
+/// Something went wrong after the page was already public.
+fn warn(ctx: &mut Ctx<'_>, why: &str) -> Result<()> {
+    ctx.say(&format!(
+        "warning: the page is online, but the confirmed badge could not be sent to it ({why}). \
+         Visitors see \"not yet published\" until the next `pop publish`."
+    ))
 }
 
 // ---------------------------------------------------------------------------
