@@ -139,7 +139,6 @@ fn deferred_commands_exit_with_code_two() {
             vec!["ask", "what", "happened"],
             "not available in this version",
         ),
-        (vec!["publish"], "not implemented yet"),
     ] {
         let err = pop::run_in(repo.root(), &args).unwrap_err();
         assert_eq!(exit_code(&err), Some(2), "{args:?}: {err:#}");

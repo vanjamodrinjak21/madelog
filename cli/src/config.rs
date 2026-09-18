@@ -11,6 +11,8 @@ pub const KEYS: &[&str] = &[
     "llm.model",
     "llm.remote",
     "server.url",
+    "server.device_id",
+    "server.slug",
     "privacy.redact",
     "project.name",
     "project.delivered_url",
@@ -50,12 +52,22 @@ impl Default for Llm {
 #[serde(default, deny_unknown_fields)]
 pub struct Server {
     pub url: String,
+    /// What `POST /v1/devices` called this machine. Written by `pop publish`,
+    /// not by you; it is a public identifier, never a secret.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_id: Option<String>,
+    /// The page this repository already owns, so re-publishing replaces it
+    /// instead of minting a second link.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slug: Option<String>,
 }
 
 impl Default for Server {
     fn default() -> Self {
         Server {
             url: "https://pop.dev".into(),
+            device_id: None,
+            slug: None,
         }
     }
 }
@@ -105,6 +117,8 @@ impl Config {
             "llm.model" => self.llm.model.clone(),
             "llm.remote" => self.llm.remote.to_string(),
             "server.url" => self.server.url.clone(),
+            "server.device_id" => self.server.device_id.clone().unwrap_or_default(),
+            "server.slug" => self.server.slug.clone().unwrap_or_default(),
             "privacy.redact" => self.privacy.redact.join("\n"),
             "project.name" => self.project.name.clone(),
             "project.delivered_url" => self.project.delivered_url.clone().unwrap_or_default(),
@@ -126,6 +140,8 @@ impl Config {
             "llm.model" => self.llm.model = value.to_string(),
             "llm.remote" => self.llm.remote = parse_bool(value)?,
             "server.url" => self.server.url = value.to_string(),
+            "server.device_id" => self.server.device_id = optional(value),
+            "server.slug" => self.server.slug = optional(value),
             "privacy.redact" => {
                 let list: Vec<String> = value
                     .split(',')

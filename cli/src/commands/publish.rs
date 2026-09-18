@@ -1,10 +1,30 @@
-//! `pop publish` — render the project page, preview it, sign the root and send it.
+//! `pop publish` and `pop unpublish` — the only two commands that talk to a
+//! network, and the only moment anything leaves this machine (spec §7).
 //!
-//! Task E renders the page and task G adds the preview, signing and upload.
+//! The order is fixed, and it matters:
+//!
+//! 1. refuse outside a repository pop knows,
+//! 2. bring patterns and summaries up to date, so the page is about today,
+//! 3. show the preview and let it change the log (hide, edit),
+//! 4. render `.pop/site/index.html` — always, so `--local` has produced
+//!    something even when the network is down,
+//! 5. sign the chain root and POST the page, then render it once more with the
+//!    server's confirmation in the badge.
+//!
+//! Nothing between step 3 and step 5 appends to the log, so the root the page
+//! shows is the root that gets signed.
 
-use anyhow::Result;
+use std::path::{Path, PathBuf};
 
-use crate::{Ctx, ExitError};
+use anyhow::{bail, Context, Result};
+
+use crate::config::Config;
+use crate::keys::DeviceKey;
+use crate::page::{self, Published};
+use crate::preview::{self, Outcome, Preview};
+use crate::publish::{self, ApiError, PageRequest, MAX_HTML_BYTES};
+use crate::store::Store;
+use crate::{commands, Ctx, ExitError};
 
 pub struct Options {
     pub local: bool,
@@ -12,6 +32,321 @@ pub struct Options {
     pub yes: bool,
 }
 
-pub fn run(_ctx: &mut Ctx<'_>, _opts: Options) -> Result<()> {
-    Err(ExitError::not_implemented("pop publish"))
+pub struct UnpublishOptions {
+    pub server: Option<String>,
+}
+
+/// `pop publish [--local] [--server <url>] [--yes]`.
+pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
+    let mut screen = preview::default_preview();
+    run_with(ctx, opts, screen.as_mut())
+}
+
+/// The same command with the preview screen handed in, so tests can walk the
+/// confirm and abort paths without a terminal.
+pub fn run_with(ctx: &mut Ctx<'_>, opts: Options, screen: &mut dyn Preview) -> Result<()> {
+    let root = project_root(ctx)?;
+
+    refresh(ctx)?;
+    if let Some(warning) = preview::thin_warning(count_events(&root)?) {
+        ctx.say(&format!("warning: {warning}"))?;
+        ctx.blank()?;
+    }
+
+    // Step 3. `--yes` and a missing terminal both mean "no preview" (spec §4.5).
+    if !opts.yes && screen.is_available() {
+        let model = preview::Model::build(&root)?;
+        let mut host = preview::LogHost::new(&root);
+        let outcome = screen.run(model, &mut host);
+        let said = std::mem::take(&mut host.said);
+        let outcome = outcome?;
+        for line in said {
+            ctx.say(&line)?;
+        }
+        if outcome == Outcome::Abort {
+            return Err(ExitError::new(1, "publish aborted").into());
+        }
+    }
+
+    // Step 4. Always render locally first: a failed upload still leaves a page.
+    let path = page::render_local(&root, None)?;
+    ctx.say(&format!("page   {}", path.display()))?;
+    if opts.local {
+        ctx.say("not published. Run `pop publish` without --local to put it online.")?;
+        return Ok(());
+    }
+
+    upload(ctx, &root, &path, opts.server.as_deref())
+}
+
+/// `pop unpublish` — take the page down, keep the chain.
+pub fn unpublish(ctx: &mut Ctx<'_>, opts: UnpublishOptions) -> Result<()> {
+    let root = project_root(ctx)?;
+    let config_path = config_path(&root);
+    let mut config = Config::load(&config_path)?;
+
+    let Some(slug) = present(config.server.slug.clone()) else {
+        bail!(
+            "this repository has no published page. `pop publish` first, or check \
+             `pop config get server.slug`."
+        );
+    };
+
+    let client = publish::Client::new(&server_url(&config, opts.server.as_deref())?);
+    let key = DeviceKey::load_or_create()?;
+    let device_id = match present(config.server.device_id.clone()) {
+        Some(id) => id,
+        None => client.register_device(&key.public_key_hex())?,
+    };
+
+    let signature = key.sign_hex(publish::delete_message(&slug).as_bytes());
+    client.delete_page(&slug, &device_id, &signature)?;
+
+    config.server.slug = None;
+    config.server.device_id = Some(device_id);
+    config.save(&config_path)?;
+
+    ctx.say(&format!(
+        "{slug} is gone from {}. The chain is untouched, and `pop publish` can put it back.",
+        client.base()
+    ))?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// steps
+// ---------------------------------------------------------------------------
+
+/// Step 1. `pop publish` outside a repository pop has recorded is a mistake,
+/// not a thing to guess at.
+fn project_root(ctx: &Ctx<'_>) -> Result<PathBuf> {
+    let root = crate::gitrepo::Repo::discover(&ctx.cwd)
+        .context("`pop publish` runs inside a git repository")?
+        .workdir()?;
+    if !root.join(".pop").join("log.db").exists() {
+        bail!(
+            "there is no pop log in {} — run `pop init` first, then commit something. \
+             `pop publish` has nothing to publish until then.",
+            root.display()
+        );
+    }
+    Ok(root)
+}
+
+/// Step 2. Patterns and summaries, through the very commands that own them.
+fn refresh(ctx: &mut Ctx<'_>) -> Result<()> {
+    commands::analyze::run(ctx, false)?;
+    ctx.blank()?;
+    commands::summarize::run(ctx, None, false)?;
+    ctx.blank()
+}
+
+/// Step 5.
+fn upload(ctx: &mut Ctx<'_>, root: &Path, page_path: &Path, server: Option<&str>) -> Result<()> {
+    let config_path = config_path(root);
+    let mut config = Config::load(&config_path)?;
+    let client = publish::Client::new(&server_url(&config, server)?);
+
+    let html = std::fs::read_to_string(page_path)
+        .with_context(|| format!("reading {}", page_path.display()))?;
+    check_size(html.len(), page_path)?;
+
+    let facts = Facts::read(root)?;
+    let key = DeviceKey::load_or_create()?;
+    let public_key = key.public_key_hex();
+
+    let mut device_id = match present(config.server.device_id.clone()) {
+        Some(id) => id,
+        None => client.register_device(&public_key)?,
+    };
+
+    let slug = present(config.server.slug.clone());
+    let published_ts = now_rfc3339();
+    let signature = key.sign_hex(
+        publish::publish_message(&facts.root, &published_ts, slug.as_deref().unwrap_or(""))
+            .as_bytes(),
+    );
+
+    let mut request = PageRequest {
+        device_id: device_id.clone(),
+        slug: slug.clone(),
+        html,
+        root: facts.root.clone(),
+        first_ts: facts.first_ts.clone(),
+        last_ts: facts.last_ts.clone(),
+        published_ts,
+        signature,
+    };
+
+    let response = match client.publish_page(&request) {
+        Ok(response) => response,
+        // The server has forgotten this device (a fresh database, or a
+        // `device_id` copied from another machine). Register again and retry
+        // once; the signature does not cover the device id, so it still holds.
+        Err(ApiError::UnknownDevice) => {
+            device_id = client.register_device(&public_key)?;
+            request.device_id = device_id.clone();
+            client.publish_page(&request)?
+        }
+        Err(other) => return Err(other.into()),
+    };
+
+    config.server.device_id = Some(device_id);
+    config.server.slug = Some(response.slug.clone());
+    config.save(&config_path)?;
+
+    let url = if response.url.trim().is_empty() {
+        format!("{}/p/{}", client.base(), response.slug)
+    } else {
+        response.url.clone()
+    };
+    let verify_url = if response.verify_url.trim().is_empty() {
+        format!("{}/v1/verify/{}", client.base(), response.slug)
+    } else {
+        response.verify_url.clone()
+    };
+
+    // Render once more, now that the badge has something to confirm.
+    let path = page::render_local(
+        root,
+        Some(Published {
+            slug: response.slug.clone(),
+            url: url.clone(),
+            received_at: response.received_at.clone(),
+            verify_url: verify_url.clone(),
+        }),
+    )?;
+
+    ctx.say(&format!("page   {}", path.display()))?;
+    ctx.say(&format!("verify {verify_url}"))?;
+    ctx.blank()?;
+    ctx.say(&format!("published  {url}"))?;
+    ctx.say("Send that link. `pop unpublish` takes it down again.")?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// small things
+// ---------------------------------------------------------------------------
+
+/// What the server is told about the chain, read after every append is done.
+struct Facts {
+    root: String,
+    first_ts: String,
+    last_ts: String,
+}
+
+impl Facts {
+    fn read(root: &Path) -> Result<Facts> {
+        let store = Store::open(&root.join(".pop").join("log.db"))?;
+        let events = store.all()?;
+        let now = now_rfc3339();
+        Ok(Facts {
+            root: crate::chain::root(&events),
+            first_ts: events
+                .first()
+                .map(|e| e.ts.clone())
+                .unwrap_or_else(|| now.clone()),
+            last_ts: events.last().map(|e| e.ts.clone()).unwrap_or(now),
+        })
+    }
+}
+
+/// The server answers 413 above 2 MB. Finding that out after uploading two
+/// megabytes is rude, so pop says it first, locally.
+fn check_size(bytes: usize, page_path: &Path) -> Result<()> {
+    if bytes > MAX_HTML_BYTES {
+        bail!(
+            "the page is {} and the server accepts {} at most. It is written at {}; \
+             hide a session or two with `pop hide` and publish again.",
+            megabytes(bytes),
+            megabytes(MAX_HTML_BYTES),
+            page_path.display()
+        );
+    }
+    Ok(())
+}
+
+fn count_events(root: &Path) -> Result<usize> {
+    Store::open(&root.join(".pop").join("log.db"))?.count()
+}
+
+fn config_path(root: &Path) -> PathBuf {
+    root.join(".pop").join("config.toml")
+}
+
+/// `--server` wins over `server.url`; neither is allowed to be empty.
+fn server_url(config: &Config, flag: Option<&str>) -> Result<String> {
+    let chosen = flag
+        .map(str::to_string)
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| config.server.url.clone());
+    if chosen.trim().is_empty() {
+        bail!(
+            "no server to publish to. Set one with `pop config set server.url <url>`, \
+             pass `--server <url>`, or stay offline with `pop publish --local`."
+        );
+    }
+    Ok(chosen)
+}
+
+/// RFC 3339 in UTC, to the second, exactly as the signature and the body carry it.
+fn now_rfc3339() -> String {
+    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
+fn present(value: Option<String>) -> Option<String> {
+    value.filter(|v| !v.trim().is_empty())
+}
+
+fn megabytes(bytes: usize) -> String {
+    format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_flag_beats_the_config_and_an_empty_one_does_not() {
+        let mut config = Config::default();
+        config.server.url = "https://pop.dev".into();
+        assert_eq!(
+            server_url(&config, Some("http://127.0.0.1:9")).unwrap(),
+            "http://127.0.0.1:9"
+        );
+        assert_eq!(server_url(&config, Some("  ")).unwrap(), "https://pop.dev");
+        assert_eq!(server_url(&config, None).unwrap(), "https://pop.dev");
+
+        config.server.url = String::new();
+        let err = server_url(&config, None).unwrap_err();
+        assert!(format!("{err:#}").contains("--local"), "{err:#}");
+    }
+
+    #[test]
+    fn the_published_timestamp_is_rfc3339_utc_to_the_second() {
+        let ts = now_rfc3339();
+        assert!(ts.ends_with('Z'), "{ts}");
+        assert!(!ts.contains('.'), "no fractional seconds: {ts}");
+        assert_eq!(ts.len(), 20, "{ts}");
+        chrono::DateTime::parse_from_rfc3339(&ts).expect("parses as RFC 3339");
+    }
+
+    #[test]
+    fn a_page_over_two_megabytes_is_refused_before_it_is_uploaded() {
+        let path = Path::new("/tmp/.pop/site/index.html");
+        check_size(MAX_HTML_BYTES, path).expect("exactly 2 MiB is allowed");
+        let err = check_size(MAX_HTML_BYTES + 1, path).unwrap_err();
+        let text = format!("{err:#}");
+        assert!(text.contains("2.0 MB"), "{text}");
+        assert!(text.contains("index.html"), "{text}");
+        assert!(text.contains("pop hide"), "{text}");
+    }
+
+    #[test]
+    fn an_absent_value_and_an_empty_one_are_the_same_thing() {
+        assert_eq!(present(Some("x".into())), Some("x".into()));
+        assert_eq!(present(Some("  ".into())), None);
+        assert_eq!(present(None), None);
+    }
 }

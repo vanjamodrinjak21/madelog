@@ -42,6 +42,8 @@ pub enum Command {
     Config(ConfigArgs),
     /// Render the project page and publish it.
     Publish(PublishArgs),
+    /// Take the published page down again.
+    Unpublish(UnpublishArgs),
     /// Look for patterns in the log and record them.
     Analyze(AnalyzeArgs),
     /// Write weekly summaries.
@@ -153,6 +155,13 @@ pub struct PublishArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct UnpublishArgs {
+    /// The server the page is on.
+    #[arg(long)]
+    pub server: Option<String>,
+}
+
+#[derive(Debug, Args)]
 pub struct AnalyzeArgs {
     /// Print the patterns and moments as JSON.
     #[arg(long)]
@@ -217,6 +226,12 @@ pub fn dispatch(cli: Cli, ctx: &mut Ctx<'_>) -> Result<()> {
                 local: args.local,
                 server: args.server,
                 yes: args.yes,
+            },
+        ),
+        Command::Unpublish(args) => commands::publish::unpublish(
+            ctx,
+            commands::publish::UnpublishOptions {
+                server: args.server,
             },
         ),
         Command::Analyze(args) => commands::analyze::run(ctx, args.json),

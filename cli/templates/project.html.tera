@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ project.name }} · how it came together</title>
+<meta name="description" content="{{ project.what }}">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* pop design tokens
+   Consumed by: design/project-page.html (inlined), landing/src/site.css (Tailwind v4 @theme inline).
+   Fonts (Google Fonts): Schibsted Grotesk (display), Instrument Sans (text), Geist Mono (terminal, hashes).
+   Colors are OKLCH with zero chroma: near black, white and neutral greys. No accent hue.
+   Status (verified, generated, hidden) is carried by weight, outline and type, never by colour. */
+
+:root {
+  color-scheme: light dark;
+
+  /* Type families */
+  --font-display: "Schibsted Grotesk", "Instrument Sans", system-ui, sans-serif;
+  --font-text: "Instrument Sans", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* Type scale, fluid. Body stays 16-17px; display tops out well under 6rem. */
+  --text-xs: 0.75rem;                                   /* 12 */
+  --text-sm: 0.875rem;                                  /* 14 */
+  --text-base: clamp(1rem, 0.96rem + 0.2vw, 1.0625rem); /* 16-17 */
+  --text-lg: clamp(1.125rem, 1.05rem + 0.35vw, 1.25rem);/* 18-20 */
+  --text-xl: clamp(1.375rem, 1.2rem + 0.8vw, 1.75rem);  /* 22-28 */
+  --text-2xl: clamp(1.75rem, 1.4rem + 1.6vw, 2.5rem);   /* 28-40 */
+  --text-3xl: clamp(2.25rem, 1.6rem + 3vw, 3.75rem);    /* 36-60 */
+
+  --leading-tight: 1.05;
+  --leading-snug: 1.25;
+  --leading-body: 1.55;
+  --tracking-display: -0.03em;
+  --tracking-tight: -0.012em;
+  --measure: 62ch;
+
+  /* Spacing (4px base) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+  --gutter: clamp(1rem, 4vw, 2.5rem);
+  --section-gap: clamp(3.5rem, 8vw, 7rem);
+
+  /* Radii: small. Nothing pill-shaped except nothing. */
+  --radius-xs: 3px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-press: 120ms;
+  --dur-fast: 160ms;
+  --dur-base: 220ms;
+  --dur-reveal: 700ms;
+
+  /* Light theme: near-black ink on white, neutral greys */
+  --bg: oklch(0.99 0 0);
+  --bg-sunk: oklch(0.965 0 0);
+  --surface: oklch(1 0 0);
+  --surface-raised: oklch(1 0 0);
+  --line: oklch(0.89 0 0);
+  --line-strong: oklch(0.78 0 0);
+  --ink: oklch(0.17 0 0);
+  --ink-2: oklch(0.42 0 0);
+  --ink-3: oklch(0.55 0 0);
+  --emphasis: oklch(0.17 0 0);          /* the strongest step; used where a colour accent would sit */
+  --emphasis-soft: oklch(0.94 0 0);
+  --emphasis-line: oklch(0.60 0 0);
+  --selection: oklch(0.86 0 0);
+  --focus: oklch(0.17 0 0);
+  --terminal-bg: oklch(0.16 0 0);
+  --terminal-ink: oklch(0.95 0 0);
+  --terminal-dim: oklch(0.64 0 0);
+  --terminal-strong: oklch(1 0 0);
+  --shadow-1: 0 1px 2px oklch(0 0 0 / 0.06), 0 4px 12px -4px oklch(0 0 0 / 0.08);
+  --shadow-2: 0 2px 6px oklch(0 0 0 / 0.08), 0 12px 32px -8px oklch(0 0 0 / 0.14);
+}
+
+/* Dark theme: system preference unless the page pins light */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: oklch(0.14 0 0);
+    --bg-sunk: oklch(0.12 0 0);
+    --surface: oklch(0.17 0 0);
+    --surface-raised: oklch(0.20 0 0);
+    --line: oklch(0.27 0 0);
+    --line-strong: oklch(0.38 0 0);
+    --ink: oklch(0.95 0 0);
+    --ink-2: oklch(0.72 0 0);
+    --ink-3: oklch(0.56 0 0);
+    --emphasis: oklch(0.98 0 0);
+    --emphasis-soft: oklch(0.24 0 0);
+    --emphasis-line: oklch(0.62 0 0);
+    --selection: oklch(0.34 0 0);
+    --focus: oklch(0.95 0 0);
+    --terminal-bg: oklch(0.11 0 0);
+    --terminal-ink: oklch(0.94 0 0);
+    --terminal-dim: oklch(0.60 0 0);
+    --terminal-strong: oklch(1 0 0);
+    --shadow-1: 0 1px 2px oklch(0 0 0 / 0.4), 0 4px 12px -4px oklch(0 0 0 / 0.5);
+    --shadow-2: 0 2px 6px oklch(0 0 0 / 0.45), 0 12px 32px -8px oklch(0 0 0 / 0.6);
+  }
+}
+
+/* Explicit dark */
+:root[data-theme="dark"] {
+  --bg: oklch(0.14 0 0);
+  --bg-sunk: oklch(0.12 0 0);
+  --surface: oklch(0.17 0 0);
+  --surface-raised: oklch(0.20 0 0);
+  --line: oklch(0.27 0 0);
+  --line-strong: oklch(0.38 0 0);
+  --ink: oklch(0.95 0 0);
+  --ink-2: oklch(0.72 0 0);
+  --ink-3: oklch(0.56 0 0);
+  --emphasis: oklch(0.98 0 0);
+  --emphasis-soft: oklch(0.24 0 0);
+  --emphasis-line: oklch(0.62 0 0);
+  --selection: oklch(0.34 0 0);
+  --focus: oklch(0.95 0 0);
+  --terminal-bg: oklch(0.11 0 0);
+  --terminal-ink: oklch(0.94 0 0);
+  --terminal-dim: oklch(0.60 0 0);
+  --terminal-strong: oklch(1 0 0);
+  --shadow-1: 0 1px 2px oklch(0 0 0 / 0.4), 0 4px 12px -4px oklch(0 0 0 / 0.5);
+  --shadow-2: 0 2px 6px oklch(0 0 0 / 0.45), 0 12px 32px -8px oklch(0 0 0 / 0.6);
+}
+
+/* Browser surfaces carry the palette too */
+::selection { background: var(--selection); color: var(--ink); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scrollbar-color:var(--line-strong) transparent;background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-text);font-size:var(--text-base);line-height:var(--leading-body);font-feature-settings:"ss01","cv11";-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:underline;text-decoration-color:var(--line-strong);text-underline-offset:0.18em;text-decoration-thickness:1px;transition:text-decoration-color var(--dur-fast) ease}
+a:hover{text-decoration-color:var(--ink)}
+code,pre,kbd{font-family:var(--font-mono);font-size:0.92em}
+h1,h2,h3{font-family:var(--font-display);letter-spacing:var(--tracking-display);text-wrap:balance;margin:0}
+h1{font-size:var(--text-2xl);line-height:var(--leading-tight);font-weight:700}
+h2{font-size:var(--text-xl);line-height:var(--leading-snug);font-weight:600;margin-bottom:var(--space-4)}
+h3{font-size:var(--text-lg);line-height:var(--leading-snug);font-weight:600}
+p{margin:0}
+.muted{color:var(--ink-2)}
+.page{max-width:76rem;margin:0 auto;padding:0 var(--gutter) var(--space-24)}
+section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
+.gen{display:inline-block;margin-left:var(--space-2);padding:0 var(--space-2);border:1px solid var(--line);border-radius:var(--radius-xs);color:var(--ink-2);font-family:var(--font-mono);font-size:var(--text-xs);line-height:1.6;vertical-align:baseline}
+.gen-remote{border-color:var(--emphasis-line);border-style:double;border-width:3px;padding-inline:var(--space-2);color:var(--ink)}
+
+/* header */
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-4);padding:var(--space-6) 0 0;font-size:var(--text-sm);color:var(--ink-2)}
+.top .mark{font-family:var(--font-display);font-weight:700;color:var(--ink);font-size:var(--text-base);text-decoration:none}
+.top .mark small{font-family:var(--font-text);font-weight:500;color:var(--ink-3);margin-left:var(--space-2)}
+.top .verified{display:inline-flex;align-items:center;gap:var(--space-2);text-decoration:none;color:var(--ink-2)}
+.top .verified svg{width:14px;height:14px;color:var(--ink)}
+
+/* intent */
+.intent{padding-top:var(--space-12);display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:var(--space-10) var(--space-16);align-items:start}
+.intent h1{max-width:20ch}
+.intent .what{margin-top:var(--space-5);max-width:var(--measure);font-size:var(--text-lg);line-height:1.45}
+.intent .for{margin-top:var(--space-3);max-width:var(--measure);color:var(--ink-2)}
+.delivered{border-top:1px solid var(--line);padding-top:var(--space-4);font-size:var(--text-sm)}
+.delivered dt{color:var(--ink-3);margin-bottom:var(--space-1)}
+.delivered dd{margin:0 0 var(--space-4)}
+.delivered dd:last-child{margin-bottom:0}
+.delivered .tools span{display:inline-block;padding:0 var(--space-2);border:1px solid var(--line);border-radius:var(--radius-xs);font-family:var(--font-mono);font-size:var(--text-xs)}
+.figures{display:grid;grid-template-columns:repeat(4,auto);justify-content:start;gap:var(--space-8);margin-top:var(--space-8);font-variant-numeric:tabular-nums}
+.figures b{display:block;font-family:var(--font-display);font-size:var(--text-xl);font-weight:600;letter-spacing:var(--tracking-display);line-height:1}
+.figures span{font-size:var(--text-sm);color:var(--ink-2)}
+
+/* timeline */
+.tl-wrap{overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:var(--space-4) 0}
+.tl{display:block;width:100%;min-width:720px;height:auto;font-family:var(--font-text)}
+.tl-axis{stroke:var(--line-strong);stroke-width:1}
+.tl-tick{stroke:var(--line-strong);stroke-width:1}
+.tl-day{fill:var(--ink-3);font-size:11px;text-anchor:middle}
+.tl-day-major{fill:var(--ink-2);font-weight:500}
+.tl-lane{fill:var(--ink-3);font-size:10.5px;letter-spacing:0.02em;text-anchor:end}
+.tl-pt{cursor:pointer;outline:none}
+.tl-pt .tl-hit{fill:transparent}
+.tl-pt circle:not(.tl-hit),.tl-pt path{transition:transform var(--dur-fast) var(--ease-out);transform-box:fill-box;transform-origin:center}
+.tl-commit circle:not(.tl-hit){fill:var(--ink);stroke:var(--bg);stroke-width:1.5}
+.tl-decision path{fill:var(--ink);stroke:var(--bg);stroke-width:1.5}
+.tl-ai_session circle:not(.tl-hit){fill:var(--bg);stroke:var(--ink);stroke-width:1.6}
+.tl-hidden circle:not(.tl-hit){fill:none;stroke:var(--ink-3);stroke-width:1.5}
+.tl-pt:hover circle:not(.tl-hit),.tl-pt:hover path,.tl-pt:focus-visible circle:not(.tl-hit),.tl-pt:focus-visible path{transform:scale(1.5)}
+.tl-pt:focus-visible .tl-hit{fill:var(--emphasis-soft)}
+.tl-pt[aria-current="true"] .tl-hit{fill:var(--emphasis-soft)}
+.tl-pattern path{stroke:var(--ink-3);stroke-width:1}
+.tl-pattern text{fill:var(--ink-3);font-size:10.5px;text-anchor:middle;font-family:var(--font-mono)}
+.tl-pattern-stall path{stroke-dasharray:3 3}
+.legend{display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-6);margin-top:var(--space-3);font-size:var(--text-sm);color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:var(--space-2)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:50%}
+.legend .k-commit i{background:var(--ink)}
+.legend .k-decision i{border-radius:0;transform:rotate(45deg) scale(0.9);background:var(--ink)}
+.legend .k-ai i{border:1.6px solid var(--ink);background:var(--bg)}
+.legend .k-hidden i{border:1.5px dashed var(--ink-3)}
+.hint{font-size:var(--text-sm);color:var(--ink-3);margin-top:var(--space-2)}
+.weeks{display:grid;grid-template-columns:repeat(auto-fit,minmax(18rem,1fr));gap:var(--space-8);margin-top:var(--space-10)}
+.week h3{font-family:var(--font-text);font-size:var(--text-sm);font-weight:500;color:var(--ink-2);letter-spacing:0;margin-bottom:var(--space-2);font-variant-numeric:tabular-nums}
+.week p{font-size:var(--text-sm);line-height:1.6}
+
+/* records */
+.records{margin-top:var(--space-10);border-top:1px solid var(--line)}
+.records>summary{cursor:pointer;padding:var(--space-4) 0;font-weight:500;list-style:none;display:flex;align-items:center;gap:var(--space-3)}
+.records>summary::-webkit-details-marker{display:none}
+.records>summary::before{content:"";width:7px;height:7px;border-right:1.5px solid var(--ink-2);border-bottom:1.5px solid var(--ink-2);transform:rotate(-45deg);transition:transform var(--dur-fast) var(--ease-out);margin-left:2px}
+.records[open]>summary::before{transform:rotate(45deg)}
+.records>summary .count{color:var(--ink-3);font-weight:400}
+.rec{border-top:1px solid var(--line);scroll-margin-top:var(--space-8)}
+.rec:target{background:var(--emphasis-soft);box-shadow:0 0 0 var(--space-3) var(--emphasis-soft);border-top-color:transparent}
+.rec>summary,.rec-flat{display:grid;grid-template-columns:7.2rem 6.2rem 4.4rem minmax(0,1fr);align-items:baseline;gap:var(--space-3);padding:var(--space-2) 0;font-size:var(--text-sm);line-height:1.45}
+.rec>summary{cursor:pointer;list-style:none}
+.rec>summary::-webkit-details-marker{display:none}
+.rec>summary:hover .rec-title{text-decoration:underline;text-decoration-color:var(--line-strong);text-underline-offset:0.18em}
+.rec-ts{color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.rec-kind{color:var(--ink-2);white-space:nowrap}
+.rec-decision{color:var(--ink);font-weight:600}
+.rec-hidden{color:var(--ink-3);font-style:italic}
+.rec-sha{color:var(--ink-3);font-size:var(--text-xs)}
+.rec-title{grid-column:4}
+.rec-flat .rec-title{font-weight:500}
+[hidden]{display:none !important}
+.rec-body{padding:var(--space-2) 0 var(--space-5) calc(7.2rem + 6.2rem + 4.4rem + 3 * var(--space-3));font-size:var(--text-sm)}
+.rec-body .meta{color:var(--ink-3);margin-bottom:var(--space-2);font-family:var(--font-mono);font-size:var(--text-xs)}
+.files{list-style:none;margin:0 0 var(--space-3);padding:0;display:grid;gap:2px;font-family:var(--font-mono);font-size:var(--text-xs)}
+.files li{display:flex;justify-content:space-between;gap:var(--space-4);max-width:44rem}
+.files .path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.files .delta{color:var(--ink-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.files ins{color:var(--ink);text-decoration:none}
+.files del{color:var(--ink-3);text-decoration:none}
+.diff{margin:0;padding:var(--space-3) var(--space-4);background:var(--bg-sunk);border:1px solid var(--line);border-radius:var(--radius-sm);overflow-x:auto;font-size:var(--text-xs);line-height:1.55;max-width:44rem;tab-size:4}
+.diff .add{color:var(--ink)}
+.diff .del{color:var(--ink-3)}
+.diff .ctx{color:var(--ink-3)}
+.prompt{margin:0 0 var(--space-3);padding:var(--space-3) var(--space-4);max-width:44rem;border-left:1px solid var(--line-strong);background:var(--bg-sunk);color:var(--ink);font-size:var(--text-sm);line-height:1.55}
+
+/* moments */
+.moments{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-10) var(--space-12)}
+.moment h3{max-width:24ch}
+.moment p{margin-top:var(--space-3);max-width:58ch;font-size:var(--text-base);line-height:1.6}
+.moment-refs{font-size:var(--text-sm) !important;color:var(--ink-3);margin-top:var(--space-3) !important}
+.moment-refs a{text-decoration-color:var(--line)}
+
+/* ratio */
+.ratio-bar{display:flex;height:22px;margin:var(--space-6) 0 var(--space-3);border-radius:var(--radius-xs);overflow:hidden;background:var(--line)}
+.ratio-bar span{display:block;height:100%}
+.ratio-bar .r-acc{background:var(--ink)}
+.ratio-bar .r-rew{background:repeating-linear-gradient(135deg,var(--ink) 0 3px,var(--bg) 3px 7px)}
+.ratio-bar .r-hum{background:var(--line-strong)}
+.ratio-legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));gap:var(--space-4) var(--space-8);font-size:var(--text-sm);font-variant-numeric:tabular-nums}
+.ratio-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:var(--space-2);vertical-align:-1px}
+.ratio-legend .r-acc i{background:var(--ink)}
+.ratio-legend .r-rew i{background:repeating-linear-gradient(135deg,var(--ink) 0 2px,var(--bg) 2px 5px);border:1px solid var(--ink)}
+.ratio-legend .r-hum i{background:var(--line-strong)}
+.ratio-legend b{display:block;font-family:var(--font-display);font-size:var(--text-lg);font-weight:600;letter-spacing:var(--tracking-tight);font-variant-numeric:normal}
+.ratio-legend span{color:var(--ink-2)}
+.ratio p.note{margin-top:var(--space-4);font-size:var(--text-sm);color:var(--ink-3);max-width:var(--measure)}
+
+/* badge */
+.badge{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--space-5);align-items:start;padding:var(--space-5) var(--space-6);border:1px solid var(--line-strong);border-radius:var(--radius-md);background:var(--surface)}
+.badge svg{width:36px;height:36px;color:var(--ink);margin-top:2px}
+.badge h2{font-size:var(--text-lg);margin-bottom:var(--space-2)}
+.badge p{font-size:var(--text-sm);line-height:1.6;max-width:70ch}
+.badge .root{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-2);word-break:break-all;margin-top:var(--space-3)}
+.badge .hidden-line{margin-top:var(--space-3);color:var(--ink-2)}
+.badge-unpublished{border-style:dashed}
+.badge-unpublished svg{color:var(--ink-3)}
+.badge .actions{margin-top:var(--space-3);font-size:var(--text-sm)}
+.colophon{margin-top:var(--space-10);padding-top:var(--space-4);border-top:1px solid var(--line);font-size:var(--text-sm);color:var(--ink-3);display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-6)}
+
+/* motion: the one authored moment. Axis draws, then points arrive in order. */
+@media (prefers-reduced-motion: no-preference){
+  .tl-axis{stroke-dasharray:1;stroke-dashoffset:1;animation:tl-draw var(--dur-reveal) var(--ease-out) forwards}
+  .tl-pt{opacity:0;animation:tl-in 420ms var(--ease-out) forwards;animation-delay:calc(220ms + var(--i) * 11ms)}
+  .tl-pattern{opacity:0;animation:tl-fade 400ms ease forwards 1100ms}
+  @keyframes tl-draw{to{stroke-dashoffset:0}}
+  @keyframes tl-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  @keyframes tl-fade{to{opacity:1}}
+}
+
+/* narrow */
+@media (max-width: 860px){
+  .intent{grid-template-columns:1fr}
+  .moments{grid-template-columns:1fr;gap:var(--space-8)}
+  .rec>summary,.rec-flat{grid-template-columns:6.4rem minmax(0,1fr);row-gap:0}
+  .rec-sha{display:none}
+  .rec-title{grid-column:1 / -1}
+  .rec-body{padding-left:0}
+  .figures{grid-template-columns:repeat(2,auto);gap:var(--space-5) var(--space-10)}
+}
+@media (max-width: 420px){
+  section{padding-top:var(--space-12)}
+  .top{flex-direction:column;gap:var(--space-2)}
+  .badge{grid-template-columns:1fr}
+  .badge svg{width:28px;height:28px}
+}
+
+/* paper: one page, badge visible */
+@media print{
+  :root{--bg:#fff;--ink:#111;--ink-2:#444;--ink-3:#666;--line:#ccc;--line-strong:#999;--surface:#fff;--bg-sunk:#f4f4f4;--emphasis:#111;--emphasis-soft:#eee;--emphasis-line:#777}
+  @page{size:A4;margin:12mm 14mm}
+  body{font-size:9.5pt;line-height:1.4;color:#111;background:#fff}
+  .page{max-width:none;padding:0}
+  section{padding-top:14pt;break-inside:avoid}
+  h1{font-size:18pt}h2{font-size:12pt;margin-bottom:6pt}h3{font-size:10.5pt}
+  .top{padding-top:0}
+  .intent{grid-template-columns:3fr 2fr;gap:12pt 24pt;padding-top:8pt}
+  .intent .what{font-size:10.5pt;margin-top:6pt}
+  .figures{margin-top:10pt}
+  .figures b{font-size:13pt}
+  .tl-wrap{overflow:visible;border:0;padding:0}
+  .tl{min-width:0}
+  .legend,.hint,.weeks,.records,.moment-refs,.actions,.top .verified{display:none !important}
+  .moments{grid-template-columns:1fr 1fr;gap:8pt 18pt}
+  .moment p{font-size:9pt;line-height:1.4;margin-top:3pt}
+  .ratio-bar{height:12pt;margin:8pt 0 4pt;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  .ratio-bar span,.ratio-legend i{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  .ratio-legend{grid-template-columns:repeat(3,1fr);font-size:8.5pt}
+  .ratio-legend b{font-size:10pt}
+  .ratio p.note{font-size:8pt;margin-top:4pt}
+  .badge{border:1pt solid #111;padding:8pt 10pt;gap:10pt;break-inside:avoid}
+  .badge h2{font-size:10.5pt}
+  .badge p{font-size:8.5pt}
+  .badge .root{font-size:7pt}
+  .badge svg{width:22pt;height:22pt;color:#111}
+  .colophon{margin-top:8pt;font-size:8pt}
+  .gen{border-color:#999;color:#444}
+  a{text-decoration:none;color:inherit}
+  .tl-axis,.tl-pt,.tl-pattern{animation:none !important;opacity:1 !important;stroke-dashoffset:0 !important}
+}
+</style>
+</head>
+<body>
+{%- set from_day = project.first_ts | day %}
+{%- set to_day = project.last_ts | day %}
+{%- set one_day = from_day == to_day %}
+<main class="page">
+
+  <header class="top">
+    <a class="mark" href="#top">{{ project.name }}{% if from_day and to_day %}<small>{% if one_day %}{{ from_day }}{% else %}{{ from_day }} – {{ to_day }}{% endif %}</small>{% endif %}</a>
+{%- if badge.published %}
+    <a class="verified" href="#badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 4.5 5.8v5.4c0 4.6 3.2 8.8 7.5 10.3 4.3-1.5 7.5-5.7 7.5-10.3V5.8L12 2.5Z"/><path d="m8.8 12.2 2.2 2.2 4.4-4.6"/></svg>Verified record</a>
+{%- endif %}
+  </header>
+
+  <!-- 1. intent + delivered -->
+  <section class="intent" id="top" aria-labelledby="intent-h">
+    <div>
+      <h1 id="intent-h">{% if project.what %}{{ project.what }}{% else %}How {{ project.name }} came together{% endif %}</h1>
+{%- if project.for_whom %}
+      <p class="what">{{ project.for_whom }}</p>
+{%- endif %}
+      <p class="for">{% if stats.days_active and from_day and to_day %}Built over {{ stats.days_active }} working day{{ stats.days_active | pluralize }} {% if one_day %}on {{ from_day }}{% else %}between {{ from_day }} and {{ to_day }}{% endif %}. {% endif %}Every commit, decision and AI session below was recorded as it happened; nothing was written after the fact.</p>
+      <div class="figures" aria-label="record size">
+        <div><b>{{ stats.commits }}</b><span>commit{{ stats.commits | pluralize }}</span></div>
+        <div><b>{{ stats.decisions }}</b><span>decision{{ stats.decisions | pluralize }}</span></div>
+        <div><b>{{ stats.ai_sessions }}</b><span>AI session{{ stats.ai_sessions | pluralize }}</span></div>
+        <div><b>{{ stats.days_active }}</b><span>day{{ stats.days_active | pluralize }} active</span></div>
+      </div>
+    </div>
+    <dl class="delivered">
+      <dt>Delivered</dt>
+{%- if project.delivered_url %}
+      <dd><a href="{{ project.delivered_url }}">{{ project.delivered_url | linkname }}</a></dd>
+{%- else %}
+      <dd class="muted">not yet published</dd>
+{%- endif %}
+      <dt>Built with</dt>
+{%- if project.tools %}
+      <dd class="tools">{% for tool in project.tools %}{% if not loop.first %} {% endif %}<span>{{ tool }}</span>{% endfor %}</dd>
+{%- else %}
+      <dd class="muted">not recorded</dd>
+{%- endif %}
+{%- if project.screenshot %}
+      <dt>Screenshot</dt>
+      <dd><a href="{{ project.screenshot }}">{{ project.screenshot }}</a></dd>
+{%- endif %}
+      <dt>Record</dt>
+      <dd>Hash-chained log of {{ timeline | length }} event{{ timeline | length | pluralize }}{% if badge.published %}, root confirmed by the server on {{ badge.published.received_at | day }}{% else %}, rendered on this machine{% endif %}. <a href="#badge">Badge</a></dd>
+    </dl>
+  </section>
+
+  <!-- 2. timeline -->
+  <section id="timeline" aria-labelledby="tl-h">
+    <h2 id="tl-h">Timeline</h2>
+    <p class="muted" style="max-width:var(--measure);margin-bottom:var(--space-6)">Commits sit on the line, decisions above it, AI sessions below. Click a point to read the diff excerpt or the prompt behind it.</p>
+    <div class="tl-wrap">
+      <svg class="tl" viewBox="0 0 1000 208" role="img" aria-labelledby="tl-title" preserveAspectRatio="xMidYMid meet">
+    <title id="tl-title">Timeline{% if from_day and to_day %}{% if one_day %} on {{ from_day }}{% else %} from {{ from_day }} to {{ to_day }}{% endif %}{% endif %}: {{ stats.commits }} commit{{ stats.commits | pluralize }}, {{ stats.decisions }} decision{{ stats.decisions | pluralize }}, {{ stats.ai_sessions }} AI session{{ stats.ai_sessions | pluralize }} on one axis.</title>
+    <text x="64" y="46" class="tl-lane">decisions</text>
+    <text x="64" y="80" class="tl-lane">commits</text>
+    <text x="64" y="114" class="tl-lane">AI sessions</text>
+    <line x1="72" y1="76" x2="980" y2="76" class="tl-axis" pathLength="1"/>
+{%- for t in ticks %}
+    <line x1="{{ t.cx }}" y1="72" x2="{{ t.cx }}" y2="80" class="tl-tick"/><text x="{{ t.cx }}" y="134" class="tl-day{% if t.major %} tl-day-major{% endif %}">{{ t.label }}</text>
+{%- endfor %}
+{%- for e in timeline %}
+    <a href="#ev-{{ e.id }}" class="tl-pt tl-{{ e.kind }}" style="--i:{{ loop.index0 }}" aria-label="{{ e.kind | kindlabel }}, {{ e.ts | daytime }}: {{ e.title }}"><title>{{ e.kind | kindlabel }}, {{ e.ts | daytime }}: {{ e.title }}</title><circle cx="{{ e.x | cx }}" cy="{{ e.kind | cy }}" r="11" class="tl-hit"/>{% if e.kind == "decision" %}<path d="{{ e.x | diamond }}"/>{% elif e.kind == "hidden" %}<circle cx="{{ e.x | cx }}" cy="{{ e.kind | cy }}" r="4.5" stroke-dasharray="2.2 2"/>{% else %}<circle cx="{{ e.x | cx }}" cy="{{ e.kind | cy }}" r="4.5"/>{% endif %}</a>
+{%- endfor %}
+  </svg>
+    </div>
+    <div class="legend" aria-hidden="true">
+      <span class="k-commit"><i></i>commit</span>
+      <span class="k-decision"><i></i>decision</span>
+      <span class="k-ai"><i></i>AI session</span>
+      <span class="k-hidden"><i></i>hidden session</span>
+    </div>
+    <p class="hint">Scroll the axis sideways on a phone.</p>
+
+{%- if summaries %}
+    <div class="weeks">
+{%- for s in summaries %}
+      <div class="week">
+        <h3>{{ s.week_start | day_month }} – {{ s.week_end | day_month }}</h3>
+        <p>{{ s.text }}{% if s.generated_by is starting_with("ollama:") %} <span class="gen" title="This paragraph was generated by a local model and reviewed by the author.">generated locally ({{ s.generated_by | modelname }}){% if s.edited %}, edited{% endif %}</span>{% elif s.generated_by is starting_with("remote:") %} <span class="gen gen-remote" title="This paragraph was generated by a remote model and reviewed by the author.">summary generated by remote model ({{ s.generated_by | modelname }}){% if s.edited %}, edited{% endif %}</span>{% elif s.generated_by is starting_with("heuristic") %} <span class="gen" title="This paragraph was assembled from the log, not written by hand.">generated from the log{% if s.edited %}, edited{% endif %}</span>{% endif %}</p>
+      </div>
+{%- endfor %}
+    </div>
+{%- else %}
+    <p class="muted" style="max-width:var(--measure);margin-top:var(--space-7)">No weekly summaries have been generated for this project yet.</p>
+{%- endif %}
+
+    <details class="records" id="records">
+      <summary>Every record <span class="count">({{ timeline | length }})</span></summary>
+{%- for e in timeline %}
+{%- if e.kind == "decision" %}
+<div class="rec rec-flat" id="ev-{{ e.id }}"><span class="rec-ts">{{ e.ts | daytime }}</span><span class="rec-kind rec-decision">decision</span><span class="rec-title">{{ e.title }}</span></div>
+{%- else %}
+<details class="rec" id="ev-{{ e.id }}"><summary><span class="rec-ts">{{ e.ts | daytime }}</span><span class="rec-kind rec-{{ e.kind }}">{{ e.kind | kindlabel }}</span>{% if e.sha %}<code class="rec-sha">{{ e.sha }}</code>{% endif %}<span class="rec-title">{{ e.title }}</span></summary><div class="rec-body">{% if e.kind == "hidden" %}<p class="muted">The author hid this session before publishing. The event stays in the hash chain; only its contents are withheld.</p>{% elif e.kind == "ai_session" %}{% if e.detail %}<blockquote class="prompt">{{ e.detail }}</blockquote>{% else %}<p class="muted">No prompt was recorded for this session (not captured, or redacted).</p>{% endif %}{% elif e.detail %}<pre class="diff" aria-label="diff excerpt">{{ e.detail | diffhtml | safe }}</pre>{% else %}<p class="muted">No diff excerpt recorded for this commit (ignored, binary or redacted paths).</p>{% endif %}</div></details>
+{%- endif %}
+{%- endfor %}
+    </details>
+  </section>
+
+  <!-- 3. moments -->
+  <section id="moments" aria-labelledby="mo-h">
+    <h2 id="mo-h">{{ moments | length | countword }} moment{{ moments | length | pluralize }}</h2>
+{%- if moments %}
+    <div class="moments">
+{%- for m in moments %}
+      <article class="moment">
+        <h3>{{ m.title }}</h3>
+        <p>{{ m.body }}{% if m.generated %} <span class="gen" title="This paragraph was generated by a local model and reviewed by the author.">generated</span>{% endif %}</p>
+{%- if m.refs %}
+        <p class="moment-refs">{% for r in m.refs %}{% if not loop.first %} · {% endif %}<a href="#ev-{{ r }}">{{ ref_labels[r] }}</a>{% endfor %}</p>
+{%- endif %}
+      </article>
+{%- endfor %}
+    </div>
+{%- else %}
+    <p class="muted" style="max-width:var(--measure)">Nothing in this record stood out as a moment worth retelling. The timeline above is the whole story.</p>
+{%- endif %}
+  </section>
+
+  <!-- 4. ratio -->
+  <section class="ratio" id="ratio" aria-labelledby="ra-h">
+    <h2 id="ra-h">Code attribution</h2>
+{%- if ratio and ratio_view %}
+    <p class="muted" style="max-width:var(--measure)">Of {{ ratio_view.total | num }} lines that reached the repository, recorded AI sessions proposed {{ ratio.ai_lines | num }}. {{ ratio.accepted_unchanged | num }} of those were kept as they came; {{ ratio.human_reworked | num }} were rewritten before or after commit. Counted per line from Git AI attribution notes.</p>
+    <div class="ratio-bar" role="img" aria-label="Accepted unchanged {{ ratio_view.accepted_pct }} percent, reworked {{ ratio_view.reworked_pct }} percent, written by hand {{ ratio_view.human_pct }} percent">
+      <span class="r-acc" style="width:{{ ratio_view.accepted_pct }}%"></span><span class="r-rew" style="width:{{ ratio_view.reworked_pct }}%"></span><span class="r-hum" style="width:{{ ratio_view.human_pct }}%"></span>
+    </div>
+    <div class="ratio-legend">
+      <div class="r-acc"><b><i></i>{{ ratio.accepted_unchanged | num }} lines</b><span>AI-proposed, accepted unchanged ({{ ratio_view.accepted_pct }}%)</span></div>
+      <div class="r-rew"><b><i></i>{{ ratio.human_reworked | num }} lines</b><span>AI-proposed, reworked by hand ({{ ratio_view.reworked_pct }}%)</span></div>
+      <div class="r-hum"><b><i></i>{{ ratio.human_lines | num }} lines</b><span>written by hand ({{ ratio_view.human_pct }}%)</span></div>
+    </div>
+    <p class="note">Lines are counted at commit time, so a line the AI proposed and the author rewrote in the same session counts as reworked. Deleted lines are not counted.</p>
+{%- else %}
+    <p class="muted" style="max-width:var(--measure)">No AI attribution was recorded for this project. Without Git AI notes there is no per-line record of what a model proposed, so this page does not guess.</p>
+{%- endif %}
+  </section>
+
+  <!-- 5. badge -->
+  <section id="badge" aria-labelledby="ba-h">
+{%- if badge.published %}
+    <div class="badge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 4.5 5.8v5.4c0 4.6 3.2 8.8 7.5 10.3 4.3-1.5 7.5-5.7 7.5-10.3V5.8L12 2.5Z"/><path d="m8.8 12.2 2.2 2.2 4.4-4.6"/></svg>
+      <div>
+        <h2 id="ba-h">Verified record</h2>
+        <p>{% if badge.first_ts and badge.last_ts %}Records from {{ badge.first_ts | stamp }} to {{ badge.last_ts | stamp }}, root{% else %}Root{% endif %} <code>{{ badge.root | cut(len=12) }}</code>, confirmed by the server on {{ badge.published.received_at | stamp }}. Every event carries the SHA-256 of the one before it. Editing any record after the fact changes the root, and the root on the server would no longer match. <a href="{{ badge.published.verify_url }}">Check the root</a></p>
+        <p class="root">{{ badge.root }}</p>
+{%- if hidden_sessions %}
+        <p class="hidden-line">{{ hidden_sessions }} session{{ hidden_sessions | pluralize }} hidden by the author before publishing. Hiding is itself a recorded event; the chain stays whole.</p>
+{%- endif %}
+        <p class="actions"><a href="{{ badge.published.url }}">{{ badge.published.url | linkname }}</a></p>
+      </div>
+    </div>
+{%- else %}
+    <div class="badge badge-unpublished">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 4.5 5.8v5.4c0 4.6 3.2 8.8 7.5 10.3 4.3-1.5 7.5-5.7 7.5-10.3V5.8L12 2.5Z"/><path d="m8.8 12.2 2.2 2.2 4.4-4.6"/></svg>
+      <div>
+        <h2 id="ba-h">Not yet published</h2>
+        <p>{% if badge.first_ts and badge.last_ts %}Records from {{ badge.first_ts | stamp }} to {{ badge.last_ts | stamp }}, root{% else %}Root{% endif %} <code>{{ badge.root | cut(len=12) }}</code>. This page was rendered locally with <code>pop publish --local</code>. The root has not been confirmed by a server, so the record cannot be checked by a third party yet.</p>
+        <p class="root">{{ badge.root }}</p>
+{%- if hidden_sessions %}
+        <p class="hidden-line">{{ hidden_sessions }} session{{ hidden_sessions | pluralize }} hidden by the author before publishing. Hiding is itself a recorded event; the chain stays whole.</p>
+{%- endif %}
+      </div>
+    </div>
+{%- endif %}
+    <p class="colophon">
+      <span>Generated by <a href="https://pop.dev">pop</a> from a local hash-chained log.</span>
+      <span>Paragraphs marked <span class="gen" style="margin:0">generated</span> were written by a model and reviewed by the author.</span>
+      <span>Raw prompts and full diffs never left the author's machine.</span>
+    </p>
+  </section>
+
+</main>
+<script>
+// Progressive enhancement: a timeline point is a plain link to its record.
+// With JS, the click also opens the record and marks the point.
+(function () {
+  var records = document.getElementById("records");
+  function openRecord(id, pt) {
+    var rec = document.getElementById(id);
+    if (!rec) return;
+    if (records && !records.open) records.open = true;
+    if (rec.tagName === "DETAILS") rec.open = true;
+    document.querySelectorAll('.tl-pt[aria-current]').forEach(function (p) { p.removeAttribute("aria-current"); });
+    if (pt) pt.setAttribute("aria-current", "true");
+  }
+  document.querySelectorAll(".tl-pt, .moment-refs a").forEach(function (a) {
+    a.addEventListener("click", function () {
+      var id = a.getAttribute("href").slice(1);
+      openRecord(id, a.classList.contains("tl-pt") ? a : document.querySelector('.tl-pt[href="#' + id + '"]'));
+    });
+  });
+  if (location.hash.indexOf("#ev-") === 0) openRecord(location.hash.slice(1), document.querySelector('.tl-pt[href="' + location.hash + '"]'));
+})();
+</script>
+</body>
+</html>
