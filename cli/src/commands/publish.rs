@@ -108,6 +108,8 @@ pub fn unpublish(ctx: &mut Ctx<'_>, opts: UnpublishOptions) -> Result<()> {
     client.delete_page(&slug, &device_id, &signature)?;
 
     config.server.slug = None;
+    // Nothing is online any more, so nothing is out of date either.
+    config.server.published_at = None;
     config.server.device_id = Some(device_id);
     config.save(&config_path)?;
 
@@ -225,7 +227,19 @@ fn upload(ctx: &mut Ctx<'_>, root: &Path, page_path: &Path, server: Option<&str>
     // The first upload could only carry "not yet published" — the slug did not
     // exist when it was rendered. Send the confirmed page over the top of it,
     // so what the company opens is the page with the badge, not the draft.
-    confirm(ctx, &client, &key, &mut request, &response.slug, &path)?;
+    let confirmed = confirm(ctx, &client, &key, &mut request, &response.slug, &path)?;
+
+    // What `madelog status` compares the page's mtime against, so it can say
+    // "the page on disk is newer than the one you published". It is the moment
+    // the bytes now on disk went up — or, when that second upload failed, the
+    // earlier moment the draft did, which is exactly when the page on disk is
+    // ahead of the page online.
+    config.server.published_at = Some(if confirmed {
+        crate::event::now_ts()
+    } else {
+        request.published_ts.clone()
+    });
+    config.save(&config_path)?;
 
     ctx.say(&format!("page   {}", path.display()))?;
     ctx.say(&format!("verify {verify_url}"))?;
@@ -240,6 +254,8 @@ fn upload(ctx: &mut Ctx<'_>, root: &Path, page_path: &Path, server: Option<&str>
 /// The page is already online at this point, so nothing here is fatal. A
 /// failure leaves the visitor looking at the unconfirmed badge, which is worth
 /// a warning and another `madelog publish`, not a non-zero exit.
+///
+/// Returns whether the bytes on disk are the bytes online.
 fn confirm(
     ctx: &mut Ctx<'_>,
     client: &publish::Client,
@@ -247,13 +263,15 @@ fn confirm(
     request: &mut PageRequest,
     slug: &str,
     page_path: &Path,
-) -> Result<()> {
+) -> Result<bool> {
     let html = match std::fs::read_to_string(page_path) {
         Ok(html) => html,
-        Err(e) => return warn(ctx, &format!("reading {}: {e}", page_path.display())),
+        Err(e) => {
+            return warn(ctx, &format!("reading {}: {e}", page_path.display())).map(|()| false)
+        }
     };
     if let Err(e) = check_size(html.len(), page_path) {
-        return warn(ctx, &format!("{e:#}"));
+        return warn(ctx, &format!("{e:#}")).map(|()| false);
     }
 
     // Same root, same timestamps, now with the slug the server minted — and a
@@ -264,8 +282,8 @@ fn confirm(
         .sign_hex(publish::publish_message(&request.root, &request.published_ts, slug).as_bytes());
 
     match client.publish_page(request) {
-        Ok(_) => Ok(()),
-        Err(e) => warn(ctx, &format!("{e}")),
+        Ok(_) => Ok(true),
+        Err(e) => warn(ctx, &format!("{e}")).map(|()| false),
     }
 }
 

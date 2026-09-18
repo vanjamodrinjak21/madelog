@@ -14,6 +14,7 @@ pub const KEYS: &[&str] = &[
     "server.url",
     "server.device_id",
     "server.slug",
+    "server.published_at",
     "privacy.redact",
     "project.name",
     "project.delivered_url",
@@ -70,6 +71,11 @@ pub struct Server {
     /// instead of minting a second link.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub slug: Option<String>,
+    /// When `madelog publish` last put a page online, RFC 3339 UTC. Written by
+    /// `madelog publish`; `madelog status` compares it with the mtime of
+    /// `.madelog/site/index.html` to say whether the link is stale.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub published_at: Option<String>,
 }
 
 impl Default for Server {
@@ -78,6 +84,7 @@ impl Default for Server {
             url: DEFAULT_SERVER_URL.into(),
             device_id: None,
             slug: None,
+            published_at: None,
         }
     }
 }
@@ -131,6 +138,7 @@ impl Config {
             "server.url" => self.server.url.clone(),
             "server.device_id" => self.server.device_id.clone().unwrap_or_default(),
             "server.slug" => self.server.slug.clone().unwrap_or_default(),
+            "server.published_at" => self.server.published_at.clone().unwrap_or_default(),
             "privacy.redact" => self.privacy.redact.join("\n"),
             "project.name" => self.project.name.clone(),
             "project.delivered_url" => self.project.delivered_url.clone().unwrap_or_default(),
@@ -155,6 +163,7 @@ impl Config {
             "server.url" => self.server.url = value.to_string(),
             "server.device_id" => self.server.device_id = optional(value),
             "server.slug" => self.server.slug = optional(value),
+            "server.published_at" => self.server.published_at = optional(value),
             "privacy.redact" => {
                 let list: Vec<String> = value
                     .split(',')

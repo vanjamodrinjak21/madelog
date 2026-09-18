@@ -129,6 +129,14 @@ pub struct CommitPayload {
     pub parents: Vec<String>,
     pub files: Vec<CommitFile>,
     pub secs_since_prev: Option<i64>,
+    /// When git says the commit was made, as opposed to `ts`, which is when
+    /// madelog recorded it. The two differ by a moment for a live commit and
+    /// by months for one `madelog backfill` picked up.
+    ///
+    /// Absent — never null — for commits recorded before madelog carried it,
+    /// so every hash written until now still verifies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub committed_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -420,6 +428,14 @@ pub fn new_id() -> String {
     uuid::Uuid::now_v7().to_string()
 }
 
+/// RFC 3339 UTC, second resolution — what goes in `committed_at`.
+///
+/// Git stores commit times as seconds since the epoch, so there is nothing
+/// finer to print. `None` for a value no calendar can hold.
+pub fn ts_from_unix(seconds: i64) -> Option<String> {
+    chrono::DateTime::from_timestamp(seconds, 0).map(|t| t.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -463,6 +479,48 @@ mod tests {
         let s = canonical_json(&p.to_value());
         assert!(s.contains(r#""model":null"#), "{s}");
         assert!(s.contains(r#""prompt":null"#), "{s}");
+    }
+
+    #[test]
+    fn an_absent_committed_at_is_omitted_rather_than_nulled() {
+        let mut payload = CommitPayload {
+            sha: "a".repeat(40),
+            message: "m".into(),
+            author: "A <a@example.com>".into(),
+            parents: vec![],
+            files: vec![],
+            secs_since_prev: None,
+            committed_at: None,
+        };
+        let without = canonical_json(&serde_json::to_value(&payload).unwrap());
+        assert!(!without.contains("committed_at"), "{without}");
+
+        payload.committed_at = Some("2026-09-17T10:00:00Z".into());
+        let with = canonical_json(&serde_json::to_value(&payload).unwrap());
+        assert!(
+            with.contains(r#""committed_at":"2026-09-17T10:00:00Z""#),
+            "{with}"
+        );
+    }
+
+    #[test]
+    fn a_payload_written_before_committed_at_existed_still_reads() {
+        let old = serde_json::json!({
+            "sha": "a".repeat(40), "message": "m", "author": "A",
+            "parents": [], "files": [], "secs_since_prev": 90
+        });
+        let payload: CommitPayload = serde_json::from_value(old).unwrap();
+        assert_eq!(payload.committed_at, None);
+    }
+
+    #[test]
+    fn a_commit_time_becomes_rfc3339_utc_to_the_second() {
+        assert_eq!(
+            ts_from_unix(1_758_103_200).as_deref(),
+            Some("2025-09-17T10:00:00Z")
+        );
+        assert_eq!(ts_from_unix(0).as_deref(), Some("1970-01-01T00:00:00Z"));
+        assert_eq!(ts_from_unix(i64::MAX), None);
     }
 
     #[test]

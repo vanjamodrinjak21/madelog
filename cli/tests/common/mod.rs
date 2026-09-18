@@ -19,6 +19,36 @@ pub fn isolate_device_key() {
     std::env::set_var("MADELOG_CONFIG_DIR", dir.path());
 }
 
+static PATH_WITH_MADELOG: OnceLock<String> = OnceLock::new();
+static PATH_DIR: OnceLock<TempDir> = OnceLock::new();
+
+/// Put a stand-in `madelog` on `PATH` for the whole test binary.
+///
+/// Checks that ask "is the binary this hook calls actually there?" need a
+/// truthful answer, and a test binary is not itself on `PATH`. Idempotent:
+/// the composed value is computed once, so calling this from every test
+/// cannot grow `PATH` one copy at a time.
+pub fn madelog_on_path() {
+    let composed = PATH_WITH_MADELOG.get_or_init(|| {
+        let dir = PATH_DIR.get_or_init(|| TempDir::new().expect("temp bin dir"));
+        let exe = dir.path().join(if cfg!(windows) {
+            "madelog.exe"
+        } else {
+            "madelog"
+        });
+        std::fs::write(&exe, "#!/bin/sh\nexit 0\n").expect("stand-in madelog");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let existing = std::env::var("PATH").unwrap_or_default();
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        format!("{}{sep}{existing}", dir.path().display())
+    });
+    std::env::set_var("PATH", composed);
+}
+
 pub struct TestRepo {
     pub dir: TempDir,
 }
@@ -51,7 +81,17 @@ impl TestRepo {
         self.commit_inner(message, forced)
     }
 
+    /// Stage everything and commit it with a committer time of your choosing,
+    /// so a test can own a month of history without waiting a month.
+    pub fn commit_all_at(&self, message: &str, unix_seconds: i64) -> String {
+        self.commit_inner_at(message, &[], Some(unix_seconds))
+    }
+
     fn commit_inner(&self, message: &str, forced: &[&str]) -> String {
+        self.commit_inner_at(message, forced, None)
+    }
+
+    fn commit_inner_at(&self, message: &str, forced: &[&str], when: Option<i64>) -> String {
         let repo = git2::Repository::open(self.root()).unwrap();
         let mut index = repo.index().unwrap();
         index
@@ -63,7 +103,15 @@ impl TestRepo {
         index.write().unwrap();
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
-        let sig = git2::Signature::now("Test Person", "test@example.com").unwrap();
+        let sig = match when {
+            Some(seconds) => git2::Signature::new(
+                "Test Person",
+                "test@example.com",
+                &git2::Time::new(seconds, 0),
+            )
+            .unwrap(),
+            None => git2::Signature::now("Test Person", "test@example.com").unwrap(),
+        };
         let parents: Vec<git2::Commit> = match repo.head() {
             Ok(h) => vec![h.peel_to_commit().unwrap()],
             Err(_) => vec![],

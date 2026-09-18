@@ -55,3 +55,51 @@ fn note_requires_madelog_init() {
     let err = madelog::run_in(repo.root(), &["note", "too early"]).unwrap_err();
     assert!(format!("{err:#}").contains("madelog init"), "{err:#}");
 }
+
+#[test]
+fn note_at_anchors_to_the_commit_you_name() {
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.rs", "// a\n");
+    let first = repo.commit_all("first commit");
+    repo.write("b.rs", "// b\n");
+    repo.commit_all("second commit");
+
+    // A short sha is what a person actually has to hand.
+    madelog::run_in(repo.root(), &["note", "--at", &first[..7], "chose sqlite"]).unwrap();
+
+    let evs = events(&repo);
+    let last = evs.last().unwrap();
+    assert_eq!(last.kind, EventKind::Decision);
+    assert_eq!(
+        last.commit_sha.as_deref(),
+        Some(first.as_str()),
+        "anchored to the named commit, not HEAD"
+    );
+}
+
+#[test]
+fn note_at_prints_the_commit_it_anchored_to() {
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.rs", "// a\n");
+    let sha = repo.commit_all("first commit");
+
+    let out = madelog::run_capture(repo.root(), &["note", "--at", &sha, "chose sqlite"]).unwrap();
+    assert!(out.contains(&sha[..7]), "{out}");
+}
+
+#[test]
+fn note_at_an_unknown_commit_is_an_error() {
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.rs", "// a\n");
+    repo.commit_all("first commit");
+
+    let err = madelog::run_in(repo.root(), &["note", "--at", "deadbee", "too clever"]).unwrap_err();
+    assert!(format!("{err:#}").contains("deadbee"), "{err:#}");
+    assert!(
+        !events(&repo).iter().any(|e| e.kind == EventKind::Decision),
+        "nothing is recorded when the anchor is wrong"
+    );
+}

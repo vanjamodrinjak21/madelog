@@ -130,9 +130,16 @@ pub fn build_context(root: &Path, published: Option<Published>) -> Result<PageCo
     let first_ts = events.first().map(|e| e.ts.clone());
     let last_ts = events.last().map(|e| e.ts.clone());
 
-    let project = project(root, &config, &events, &first_ts, &last_ts);
+    // The badge is about the chain, so it keeps `ts`: it certifies when
+    // madelog recorded things. Everything the reader is told about the work
+    // itself — the header dates, the timeline, the day count — uses
+    // `committed_at` where a commit has one, so a repository that madelog
+    // joined late still shows the months it really took.
+    let (first_at, last_at) = span_of_work(&events);
+
+    let project = project(root, &config, &events, &first_at, &last_at);
     let hidden = hidden_session_ids(&events);
-    let timeline = timeline(&events, &hidden, &first_ts, &last_ts);
+    let timeline = timeline(&events, &hidden, &first_at, &last_at);
     let hidden_sessions = timeline.iter().filter(|e| e.kind == "hidden").count() as u64;
 
     let patterns = crate::patterns::detect(&events);
@@ -154,6 +161,45 @@ pub fn build_context(root: &Path, published: Option<Published>) -> Result<PageCo
             published,
         },
     })
+}
+
+/// When a commit event says the work happened: `committed_at` if it has one,
+/// the moment madelog recorded it otherwise.
+///
+/// Events that are not commits have nothing but their own timestamp, and that
+/// is the right answer for them: a decision was written when it was written.
+fn effective_ts(event: &Event) -> String {
+    if event.kind == EventKind::Commit {
+        if let Some(at) = event
+            .payload
+            .get("committed_at")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
+        {
+            return at.to_string();
+        }
+    }
+    event.ts.clone()
+}
+
+/// The earliest and latest moment the record covers, by [`effective_ts`].
+///
+/// Not `events.first()` and `events.last()`: backfilled commits are recorded
+/// newest-to-oldest in wall-clock terms only by accident, and a note written
+/// today about a commit from March must not stretch the axis backwards.
+fn span_of_work(events: &[Event]) -> (Option<String>, Option<String>) {
+    let mut stamps: Vec<(DateTime<Utc>, String)> = events
+        .iter()
+        .filter_map(|event| {
+            let ts = effective_ts(event);
+            parse_ts(&ts).map(|at| (at, ts))
+        })
+        .collect();
+    stamps.sort_by(|a, b| a.0.cmp(&b.0));
+    (
+        stamps.first().map(|(_, ts)| ts.clone()),
+        stamps.last().map(|(_, ts)| ts.clone()),
+    )
 }
 
 /// Render the page to HTML.
@@ -236,7 +282,9 @@ fn stats(events: &[Event]) -> Stats {
         match event.kind {
             EventKind::Commit => {
                 stats.commits += 1;
-                if let Some(ts) = parse_ts(&event.ts) {
+                // The day the commit was made, not the day madelog heard
+                // about it: a backfilled month of work is a month of days.
+                if let Some(ts) = parse_ts(&effective_ts(event)) {
                     days.insert(ts.with_timezone(&Local).format("%Y-%m-%d").to_string());
                 }
             }
@@ -280,7 +328,7 @@ fn timeline(
                 };
                 Some(TimelineEntry {
                     id: event.id.clone(),
-                    ts: event.ts.clone(),
+                    ts: effective_ts(event),
                     kind: "commit".into(),
                     title: first_line(&payload.message),
                     detail: diff_excerpt(&payload),
@@ -341,6 +389,14 @@ fn timeline(
             out.push(entry);
         }
     }
+    // Chain order is the order madelog *recorded* things, and `madelog
+    // backfill` records a year of commits after this morning's. The page is
+    // about the work, so it reads in the order the work happened; a stable
+    // sort keeps chain order for anything that shares a timestamp.
+    out.sort_by(|a, b| match (parse_ts(&a.ts), parse_ts(&b.ts)) {
+        (Some(x), Some(y)) => x.cmp(&y),
+        _ => std::cmp::Ordering::Equal,
+    });
     out
 }
 

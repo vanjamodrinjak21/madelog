@@ -740,6 +740,72 @@ fn a_failed_confirmation_is_a_warning_because_the_page_is_already_online() {
 }
 
 #[test]
+fn publish_records_when_the_page_went_up_so_status_can_call_it_stale() {
+    let server = FakeServer::start();
+    let repo = repo_with_history(3);
+    assert_eq!(config_of(&repo).server.published_at, None);
+
+    madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap();
+
+    let published_at = config_of(&repo)
+        .server
+        .published_at
+        .expect("publish records when it published");
+    let at = chrono::DateTime::parse_from_rfc3339(&published_at)
+        .unwrap_or_else(|e| panic!("{published_at} is not RFC 3339: {e}"));
+
+    // The confirmed page was uploaded after it was written, so the recorded
+    // moment is not older than the file: `madelog status` must not call a
+    // freshly published page stale.
+    let written = std::fs::metadata(repo.path(".madelog/site/index.html"))
+        .and_then(|m| m.modified())
+        .unwrap();
+    assert!(
+        chrono::DateTime::<chrono::Utc>::from(written) <= at.with_timezone(&chrono::Utc),
+        "published_at {published_at} is older than the page it sent"
+    );
+
+    let json = madelog::run_capture(repo.root(), &["status", "--json"]).unwrap();
+    let status: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(status["page"]["newer_than_publish"], false);
+    assert_eq!(
+        status["published"]["published_at"].as_str(),
+        Some(published_at.as_str())
+    );
+}
+
+#[test]
+fn a_confirmation_that_failed_leaves_the_page_on_disk_ahead_of_the_one_online() {
+    let server = FakeServer::start();
+    let repo = repo_with_history(3);
+    server.break_the_confirmation();
+
+    madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap();
+
+    // The badge page was rendered but never accepted, so what is on disk is
+    // newer than what visitors see, and status says so.
+    let json = madelog::run_capture(repo.root(), &["status", "--json"]).unwrap();
+    let status: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(status["page"]["newer_than_publish"], true);
+}
+
+#[test]
+fn unpublish_forgets_when_the_page_went_up() {
+    let server = FakeServer::start();
+    let repo = repo_with_history(3);
+    madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &server.url]).unwrap();
+    assert!(config_of(&repo).server.published_at.is_some());
+
+    madelog::run_capture(repo.root(), &["unpublish", "--server", &server.url]).unwrap();
+
+    assert_eq!(
+        config_of(&repo).server.published_at,
+        None,
+        "nothing is online, so nothing is out of date"
+    );
+}
+
+#[test]
 fn unpublish_sends_a_valid_delete_signature_and_forgets_the_slug() {
     let server = FakeServer::start();
     let repo = repo_with_history(3);

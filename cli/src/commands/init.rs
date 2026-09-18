@@ -15,7 +15,27 @@ use crate::Ctx;
 /// Marks the lines madelog owns inside `.git/hooks/post-commit`.
 pub const HOOK_MARKER: &str = "# madelog-cli:post-commit";
 
-const HOOK_COMMENT: &str = "# madelog-cli:post-commit - records this commit in .madelog/log.db";
+/// Every git hook madelog installs, and what each one is for.
+///
+/// `post-commit` is the one that matters; the other two exist because a rebase
+/// or a pull moves HEAD without ever running `post-commit`, and a commit that
+/// no hook saw is a hole in the page.
+pub const HOOKS: &[(&str, &str)] = &[
+    ("post-commit", "records this commit in .madelog/log.db"),
+    (
+        "post-merge",
+        "records the commit a merge or pull left at HEAD",
+    ),
+    (
+        "post-rewrite",
+        "records the commits a rebase or amend produced",
+    ),
+];
+
+/// The line that marks madelog's own lines inside `.git/hooks/<name>`.
+pub fn hook_marker(name: &str) -> String {
+    format!("# madelog-cli:{name}")
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct Options {
@@ -79,7 +99,7 @@ pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
     // Everything below this line is idempotent and runs on every `init`.
     add_to_git_exclude(&repo.git_dir())?;
     let hook_command = hook_command_for(&workdir, crate::current_exe().as_deref());
-    install_post_commit_hook(&repo.git_dir(), &hook_command)?;
+    install_hooks(&repo.git_dir(), &hook_command)?;
     DeviceKey::load_or_create()?;
     // Opening the store creates the log if this is the first run.
     let store = Store::open(&madelog_dir.join("log.db"))?;
@@ -246,17 +266,67 @@ fn shell_quote(s: &str) -> String {
     }
 }
 
-/// Install (or top up) `.git/hooks/post-commit`. An existing hook is kept and
-/// our line is appended once, however many times this runs.
+/// Install (or top up) every hook in [`HOOKS`].
+pub fn install_hooks(git_dir: &Path, command: &str) -> Result<()> {
+    for (name, _) in HOOKS {
+        install_hook(git_dir, name, command)?;
+    }
+    Ok(())
+}
+
+/// Install (or top up) `.git/hooks/post-commit`. Kept as its own name because
+/// it is the hook everything else is described against.
 pub fn install_post_commit_hook(git_dir: &Path, command: &str) -> Result<()> {
+    install_hook(git_dir, "post-commit", command)
+}
+
+/// Is madelog's line already in `.git/hooks/<name>`?
+pub fn hook_is_installed(git_dir: &Path, name: &str) -> bool {
+    std::fs::read_to_string(git_dir.join("hooks").join(name))
+        .map(|body| body.contains(&hook_marker(name)))
+        .unwrap_or(false)
+}
+
+/// The command madelog's line in `.git/hooks/<name>` calls, if it has one.
+pub fn installed_hook_command(git_dir: &Path, name: &str) -> Option<String> {
+    let body = std::fs::read_to_string(git_dir.join("hooks").join(name)).ok()?;
+    let marker = hook_marker(name);
+    let mut lines = body.lines();
+    lines.find(|l| l.trim_start().starts_with(&marker))?;
+    let call = lines.next()?.trim();
+    let call = call.strip_suffix("|| true").unwrap_or(call).trim();
+    let call = call
+        .strip_suffix(&format!("hook {name}"))
+        .unwrap_or(call)
+        .trim();
+    Some(unquote(call))
+}
+
+/// Undo [`shell_quote`] for the one form it produces.
+fn unquote(value: &str) -> String {
+    match value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')) {
+        Some(inner) => inner.replace(r"'\''", "'"),
+        None => value.to_string(),
+    }
+}
+
+/// Install (or top up) one hook. An existing hook is kept and our line is
+/// appended once, however many times this runs.
+pub fn install_hook(git_dir: &Path, name: &str, command: &str) -> Result<()> {
+    let why = HOOKS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, why)| *why)
+        .unwrap_or("records commits in .madelog/log.db");
     let hooks = git_dir.join("hooks");
     std::fs::create_dir_all(&hooks).with_context(|| format!("creating {}", hooks.display()))?;
-    let path = hooks.join("post-commit");
-    let line = format!("{HOOK_COMMENT}\n{command} hook post-commit || true\n");
+    let path = hooks.join(name);
+    let marker = hook_marker(name);
+    let line = format!("{marker} - {why}\n{command} hook {name} || true\n");
 
     let contents = match std::fs::read_to_string(&path) {
         Ok(existing) => {
-            if existing.contains(HOOK_MARKER) {
+            if existing.contains(&marker) {
                 return Ok(());
             }
             let mut merged = existing;
@@ -359,6 +429,53 @@ mod tests {
         let hook = std::fs::read_to_string(git_dir.join("hooks/post-commit")).unwrap();
         assert!(hook.contains("echo hi"), "{hook}");
         assert_eq!(hook.matches(HOOK_MARKER).count(), 1, "{hook}");
+    }
+
+    #[test]
+    fn all_three_hooks_are_installed_and_call_their_own_subcommand() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let git_dir = dir.path().join(".git");
+        install_hooks(&git_dir, "madelog").unwrap();
+        install_hooks(&git_dir, "madelog").unwrap();
+
+        for (name, _) in HOOKS {
+            let body = std::fs::read_to_string(git_dir.join("hooks").join(name)).unwrap();
+            assert!(
+                body.contains(&format!("madelog hook {name} || true")),
+                "{body}"
+            );
+            assert_eq!(body.matches(&hook_marker(name)).count(), 1, "{body}");
+            assert!(hook_is_installed(&git_dir, name), "{name}");
+            assert_eq!(
+                installed_hook_command(&git_dir, name).as_deref(),
+                Some("madelog"),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_uninstalled_hook_names_no_command() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let git_dir = dir.path().join(".git");
+        assert!(!hook_is_installed(&git_dir, "post-merge"));
+        assert_eq!(installed_hook_command(&git_dir, "post-merge"), None);
+
+        std::fs::create_dir_all(git_dir.join("hooks")).unwrap();
+        std::fs::write(git_dir.join("hooks/post-merge"), "#!/bin/sh\necho hi\n").unwrap();
+        assert!(!hook_is_installed(&git_dir, "post-merge"));
+        assert_eq!(installed_hook_command(&git_dir, "post-merge"), None);
+    }
+
+    #[test]
+    fn a_quoted_hook_command_reads_back_as_the_path_it_names() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let git_dir = dir.path().join(".git");
+        install_hook(&git_dir, "post-commit", "'/a b/.madelog/bin/madelog'").unwrap();
+        assert_eq!(
+            installed_hook_command(&git_dir, "post-commit").as_deref(),
+            Some("/a b/.madelog/bin/madelog")
+        );
     }
 
     #[test]

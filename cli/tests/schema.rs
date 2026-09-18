@@ -56,6 +56,7 @@ fn samples() -> Vec<Payload> {
                 diff_excerpt: Some("@@ -1 +1 @@".into()),
             }],
             secs_since_prev: Some(90),
+            committed_at: Some("2026-09-17T10:00:00Z".into()),
         }),
         Payload::AiSession(AiSessionPayload {
             tool: "claude-code".into(),
@@ -187,6 +188,33 @@ fn a_commit_file_may_omit_its_excerpt_but_never_nulls_it() {
     assert!(
         !keys.contains("diff_excerpt"),
         "a missing excerpt is absent, not null: {value}"
+    );
+}
+
+#[test]
+fn a_commit_may_omit_committed_at_but_never_nulls_it() {
+    let schema = schema();
+    let def = &schema["$defs"]["commit"];
+    assert_eq!(def["properties"]["committed_at"]["type"], "string");
+    assert_eq!(def["properties"]["committed_at"]["format"], "date-time");
+    assert!(
+        !strings(&def["required"]).contains("committed_at"),
+        "committed_at is optional: a commit recorded before it existed is still valid"
+    );
+
+    let payload = Payload::Commit(CommitPayload {
+        sha: "a".repeat(40),
+        message: "feat: something".into(),
+        author: "A <a@example.com>".into(),
+        parents: vec![],
+        files: vec![],
+        secs_since_prev: None,
+        committed_at: None,
+    });
+    let value = payload.to_value();
+    assert!(
+        !names(&value).contains("committed_at"),
+        "a missing commit time is absent, not null: {value}"
     );
 }
 

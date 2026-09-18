@@ -62,7 +62,12 @@
             }
           }
         },
-        "secs_since_prev": { "type": ["integer", "null"], "minimum": 0 }
+        "secs_since_prev": { "type": ["integer", "null"], "minimum": 0 },
+        "committed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "the git committer time, RFC 3339 UTC; absent for commits recorded before madelog started carrying it"
+        }
       }
     },
     "ai_session": {

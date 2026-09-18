@@ -210,34 +210,39 @@ fn local_date(ts: &str) -> Option<NaiveDate> {
 /// The bucketing itself, with the clock handed in so tests can pretend to live
 /// anywhere — including in a week that a daylight-saving change cuts in half.
 fn bucket_with(events: &[Event], to_date: impl Fn(&str) -> Option<NaiveDate>) -> Vec<Week> {
+    // When each commit was *made*, by sha. A commit recorded by `madelog
+    // backfill` carries `committed_at`, and that is the week it belongs in:
+    // bucketing it by `ts` would drop a year of history into the week the
+    // backfill ran.
+    let commit_ts: BTreeMap<&str, &str> = events
+        .iter()
+        .filter(|e| e.kind == EventKind::Commit)
+        .filter_map(|e| e.commit_sha.as_deref().map(|sha| (sha, work_ts(e))))
+        .collect();
+
     let Some(origin) = events
         .iter()
         .filter(|e| e.kind == EventKind::Commit)
-        .find_map(|e| to_date(&e.ts))
+        .filter_map(|e| to_date(work_ts(e)))
+        .min()
         .map(monday_of)
     else {
         // No commits, no weeks: madelog counts weeks from the first commit.
         return Vec::new();
     };
 
-    // When each commit was recorded, by sha. A `pattern` event carries the
-    // timestamp of the `madelog analyze` run that found it, which says nothing
-    // about when the work happened, so patterns are bucketed by the commit
-    // they are anchored to instead.
-    let commit_ts: BTreeMap<&str, &str> = events
-        .iter()
-        .filter(|e| e.kind == EventKind::Commit)
-        .filter_map(|e| e.commit_sha.as_deref().map(|sha| (sha, e.ts.as_str())))
-        .collect();
-
     let mut weeks: BTreeMap<u32, Week> = BTreeMap::new();
     for event in events {
+        // A `pattern` event carries the timestamp of the `madelog analyze`
+        // run that found it, which says nothing about when the work happened,
+        // so patterns are bucketed by the commit they are anchored to instead.
         let ts = match event.kind {
             EventKind::Pattern => event
                 .commit_sha
                 .as_deref()
                 .and_then(|sha| commit_ts.get(sha).copied())
                 .unwrap_or(event.ts.as_str()),
+            EventKind::Commit => work_ts(event),
             _ => event.ts.as_str(),
         };
         let Some(date) = to_date(ts) else {
@@ -316,6 +321,17 @@ fn first_line(s: &str) -> String {
     s.lines().next().unwrap_or("").trim().to_string()
 }
 
+/// When a commit event says the commit was made: `committed_at` when the
+/// payload has one, the moment madelog recorded it otherwise.
+fn work_ts(event: &Event) -> &str {
+    event
+        .payload
+        .get("committed_at")
+        .and_then(|v| v.as_str())
+        .filter(|v| !v.is_empty())
+        .unwrap_or(event.ts.as_str())
+}
+
 /// The Monday of the week `date` falls in.
 fn monday_of(date: NaiveDate) -> NaiveDate {
     date - Duration::days(i64::from(date.weekday().num_days_from_monday()))
@@ -382,8 +398,17 @@ mod tests {
                 })
                 .collect(),
             secs_since_prev: None,
+            committed_at: None,
         });
         event_on(ts, Some(sha), EventKind::Commit, payload.to_value())
+    }
+
+    /// A commit recorded by `madelog backfill`: `ts` is when the backfill ran,
+    /// `committed_at` is when the commit was actually made.
+    fn backfilled(recorded: &str, made: &str, sha: &str, message: &str) -> Event {
+        let mut event = commit_at(recorded, sha, message, &[("src/a.rs", 1, 0)]);
+        event.payload["committed_at"] = serde_json::json!(made);
+        event
     }
 
     fn decision(ts: &str, text: &str, private: bool) -> Event {
@@ -713,5 +738,83 @@ mod tests {
     fn monday_of_is_idempotent_on_a_monday() {
         assert_eq!(monday_of(date("2026-09-14")), date("2026-09-14"));
         assert_eq!(monday_of(date("2026-09-20")), date("2026-09-14"));
+    }
+
+    #[test]
+    fn a_backfilled_commit_is_bucketed_by_when_it_was_made() {
+        // Three commits from three different weeks in March, all recorded on
+        // one afternoon in September.
+        let events = [
+            backfilled(
+                "2026-09-17T12:00:00Z",
+                "2026-03-02T09:00:00Z",
+                &"a".repeat(40),
+                "week one",
+            ),
+            backfilled(
+                "2026-09-17T12:00:01Z",
+                "2026-03-10T09:00:00Z",
+                &"b".repeat(40),
+                "week two",
+            ),
+            backfilled(
+                "2026-09-17T12:00:02Z",
+                "2026-03-17T09:00:00Z",
+                &"c".repeat(40),
+                "week three",
+            ),
+        ];
+
+        let weeks = bucket_with(&events, utc_date);
+
+        assert_eq!(weeks.len(), 3, "three weeks of work, not one afternoon");
+        assert_eq!(weeks[0].week_start(), "2026-03-02");
+        assert_eq!(weeks[0].index, 1);
+        assert_eq!(weeks[2].week_start(), "2026-03-16");
+        assert_eq!(weeks[2].index, 3);
+        assert_eq!(weeks[0].commits[0].message, "week one");
+    }
+
+    #[test]
+    fn a_commit_without_a_commit_time_still_buckets_by_when_it_was_recorded() {
+        let events = [commit(
+            "2026-09-17T12:00:00Z",
+            "no committed_at here",
+            &[("a.rs", 1, 0)],
+        )];
+        let weeks = bucket_with(&events, utc_date);
+        assert_eq!(weeks.len(), 1);
+        assert_eq!(weeks[0].week_start(), "2026-09-14");
+    }
+
+    #[test]
+    fn patterns_follow_the_commit_they_are_anchored_to_into_its_real_week() {
+        let sha = "a".repeat(40);
+        let events = [
+            backfilled(
+                "2026-09-17T12:00:00Z",
+                "2026-03-02T09:00:00Z",
+                &sha,
+                "the work",
+            ),
+            // `madelog analyze` ran in September; the pattern belongs to March.
+            event_on(
+                "2026-09-17T12:05:00Z",
+                Some(&sha),
+                EventKind::Pattern,
+                Payload::Pattern(crate::event::PatternPayload {
+                    pattern: crate::event::PatternKind::Revert,
+                    commits: vec![sha.clone()],
+                    detail: "undid the parser".into(),
+                })
+                .to_value(),
+            ),
+        ];
+
+        let weeks = bucket_with(&events, utc_date);
+
+        assert_eq!(weeks.len(), 1, "one week, not two");
+        assert_eq!(weeks[0].week_start(), "2026-03-02");
+        assert_eq!(weeks[0].patterns.len(), 1);
     }
 }

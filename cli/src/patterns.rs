@@ -549,6 +549,7 @@ pub(crate) mod testdata {
                 parents: vec![],
                 files,
                 secs_since_prev: None,
+                committed_at: None,
             };
             self.push(
                 at(secs),

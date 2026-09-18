@@ -228,12 +228,15 @@ pub const GIT_AI_INSTALL: &str = "powershell -NoProfile -ExecutionPolicy Bypass 
 /// Is `git-ai` on PATH, or where its installer puts it?
 ///
 /// Cached: the hook asks once per commit, and walking PATH is not free.
-fn git_ai_installed() -> bool {
+pub fn git_ai_installed() -> bool {
     static CACHED: OnceLock<bool> = OnceLock::new();
-    *CACHED.get_or_init(detect_git_ai)
+    *CACHED.get_or_init(|| git_ai_path().is_some())
 }
 
-fn detect_git_ai() -> bool {
+/// Where `git-ai` actually is, so `madelog doctor` can name the file rather
+/// than assert that one exists. Not cached: doctor asks once, and asks after
+/// the person has just installed it.
+pub fn git_ai_path() -> Option<std::path::PathBuf> {
     let names: &[&str] = if cfg!(windows) {
         &["git-ai.exe", "git-ai.cmd"]
     } else {
@@ -242,17 +245,21 @@ fn detect_git_ai() -> bool {
 
     if let Some(path) = std::env::var_os("PATH") {
         for dir in std::env::split_paths(&path) {
-            if names.iter().any(|n| dir.join(n).is_file()) {
-                return true;
+            for name in names {
+                let candidate = dir.join(name);
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
             }
         }
     }
     // The installer drops the binary here and symlinks it onto PATH; a git
     // hook does not always run with that PATH.
-    dirs::home_dir().is_some_and(|home| {
-        let bin = home.join(".git-ai").join("bin");
-        names.iter().any(|n| bin.join(n).is_file())
-    })
+    let bin = dirs::home_dir()?.join(".git-ai").join("bin");
+    names
+        .iter()
+        .map(|n| bin.join(n))
+        .find(|candidate| candidate.is_file())
 }
 
 #[cfg(test)]

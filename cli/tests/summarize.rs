@@ -33,6 +33,7 @@ fn record_commit(repo: &TestRepo, ts: &str, sha: &str, message: &str, path: &str
             diff_excerpt: Some("+ let secret = \"hunter2\";".into()),
         }],
         secs_since_prev: None,
+        committed_at: None,
     });
     store(repo)
         .append_at(

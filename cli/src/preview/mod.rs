@@ -649,6 +649,7 @@ mod tests {
                         diff_excerpt: None,
                     }],
                     secs_since_prev: None,
+                    committed_at: None,
                 }),
             )
             .unwrap();

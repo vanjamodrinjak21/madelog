@@ -27,9 +27,17 @@ pub enum Command {
     Onboard(OnboardArgs),
     /// Write down a one-sentence decision.
     Note(NoteArgs),
+    /// Record the commits this repository already had before madelog arrived.
+    Backfill(BackfillArgs),
     /// Hooks madelog installs into git. You do not run these by hand.
     #[command(subcommand)]
     Hook(HookCommand),
+    /// Show what madelog has recorded and how this repository is set up.
+    Status(StatusArgs),
+    /// Check the setup, and repair what is safe to repair.
+    Doctor(DoctorArgs),
+    /// Open the rendered page in your browser.
+    Open(OpenArgs),
     /// Print the recorded events.
     Log(LogArgs),
     /// Recompute the hash chain and print the root.
@@ -98,12 +106,50 @@ pub struct NoteArgs {
     /// Keep this note out of the published page.
     #[arg(long)]
     pub private: bool,
+    /// Anchor the note to this commit instead of HEAD. A short sha will do.
+    #[arg(long = "at", value_name = "SHA")]
+    pub at: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct BackfillArgs {
+    /// The oldest commit to record: a sha, or a date like 2026-01-31.
+    #[arg(long, value_name = "DATE|SHA")]
+    pub since: Option<String>,
+    /// Do not ask before recording.
+    #[arg(long, short = 'y')]
+    pub yes: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct StatusArgs {
+    /// Print the status as JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct DoctorArgs {
+    /// Repair what is safe to repair: the hooks and the git exclude entry.
+    #[arg(long)]
+    pub fix: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct OpenArgs {
+    /// Print the path instead of opening it.
+    #[arg(long)]
+    pub print: bool,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum HookCommand {
     /// Record the commit that was just made.
     PostCommit,
+    /// Record the commit a merge or a pull left at HEAD.
+    PostMerge,
+    /// Record the commits a rebase or an amend produced.
+    PostRewrite,
 }
 
 #[derive(Debug, Args)]
@@ -213,8 +259,22 @@ pub fn dispatch(cli: Cli, ctx: &mut Ctx<'_>) -> Result<()> {
     match cli.command {
         Command::Init(args) => commands::init::run(ctx, commands::init::Options::from_args(&args)),
         Command::Onboard(args) => commands::onboard::run(ctx, args.project, args.yes),
-        Command::Note(args) => commands::note::run(ctx, &args.text.join(" "), args.private),
+        Command::Note(args) => {
+            commands::note::run(ctx, &args.text.join(" "), args.private, args.at.as_deref())
+        }
+        Command::Backfill(args) => commands::backfill::run(
+            ctx,
+            commands::backfill::Options {
+                since: args.since,
+                yes: args.yes,
+            },
+        ),
         Command::Hook(HookCommand::PostCommit) => commands::hook::post_commit(ctx),
+        Command::Hook(HookCommand::PostMerge) => commands::hook::post_merge(ctx),
+        Command::Hook(HookCommand::PostRewrite) => commands::hook::post_rewrite(ctx),
+        Command::Status(args) => commands::status::run(ctx, args.json),
+        Command::Doctor(args) => commands::doctor::run(ctx, args.fix),
+        Command::Open(args) => commands::open::run(ctx, args.print),
         Command::Log(args) => commands::log::run(ctx, args.json),
         Command::Verify => commands::verify::run(ctx),
         Command::Export(args) => commands::export::run(ctx, args.path.as_deref()),
@@ -261,9 +321,58 @@ mod tests {
             Command::Note(a) => {
                 assert_eq!(a.text.join(" "), "chose sqlite");
                 assert!(a.private);
+                assert_eq!(a.at, None);
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn note_can_name_the_commit_it_belongs_to() {
+        let cli = parse(&["note", "--at", "abc1234", "chose sqlite"]).unwrap();
+        match cli.command {
+            Command::Note(a) => {
+                assert_eq!(a.at.as_deref(), Some("abc1234"));
+                assert_eq!(a.text.join(" "), "chose sqlite");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn backfill_takes_a_starting_point_and_a_yes() {
+        let cli = parse(&["backfill", "--since", "2026-01-31", "--yes"]).unwrap();
+        match cli.command {
+            Command::Backfill(a) => {
+                assert_eq!(a.since.as_deref(), Some("2026-01-31"));
+                assert!(a.yes);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_new_commands_parse() {
+        assert!(matches!(
+            parse(&["status", "--json"]).unwrap().command,
+            Command::Status(a) if a.json
+        ));
+        assert!(matches!(
+            parse(&["doctor", "--fix"]).unwrap().command,
+            Command::Doctor(a) if a.fix
+        ));
+        assert!(matches!(
+            parse(&["open", "--print"]).unwrap().command,
+            Command::Open(a) if a.print
+        ));
+        assert!(matches!(
+            parse(&["hook", "post-merge"]).unwrap().command,
+            Command::Hook(HookCommand::PostMerge)
+        ));
+        assert!(matches!(
+            parse(&["hook", "post-rewrite"]).unwrap().command,
+            Command::Hook(HookCommand::PostRewrite)
+        ));
     }
 
     #[test]

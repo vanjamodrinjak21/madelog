@@ -180,3 +180,138 @@ fn hook_never_fails_even_without_madelog_init() {
     madelog::run_in(repo.root(), &["hook", "post-commit"]).expect("hook must not fail the commit");
     assert!(!repo.path(".madelog/log.db").exists());
 }
+
+#[test]
+fn hook_records_when_git_says_the_commit_was_made() {
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.txt", "one\n");
+    // 2026-03-02T09:00:00Z
+    repo.commit_all_at("feat: a thing", 1_772_442_000);
+
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+
+    let c = commit_payloads(&repo).pop().unwrap();
+    assert_eq!(c.committed_at.as_deref(), Some("2026-03-02T09:00:00Z"));
+
+    // `ts` still says when madelog saw it, which is now, not March.
+    let ev = events(&repo)
+        .into_iter()
+        .find(|e| e.kind == EventKind::Commit)
+        .unwrap();
+    assert!(ev.ts.as_str() > "2026-03-03", "{}", ev.ts);
+}
+
+#[test]
+fn post_merge_records_the_commit_at_head() {
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.txt", "one\n");
+    let sha = repo.commit_all("merge: bring it in");
+
+    madelog::run_in(repo.root(), &["hook", "post-merge"]).unwrap();
+
+    let commits = commit_payloads(&repo);
+    assert_eq!(commits.len(), 1);
+    assert_eq!(commits[0].sha, sha);
+    assert!(commits[0].committed_at.is_some());
+}
+
+#[test]
+fn post_merge_records_a_commit_only_once() {
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.txt", "one\n");
+    repo.commit_all("first");
+
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["hook", "post-merge"]).unwrap();
+
+    assert_eq!(
+        commit_payloads(&repo).len(),
+        1,
+        "the hooks do not duplicate"
+    );
+}
+
+#[test]
+fn post_rewrite_records_the_new_shas_it_is_handed_on_stdin() {
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.txt", "one\n");
+    let first = repo.commit_all("first");
+    repo.write("a.txt", "one\ntwo\n");
+    let second = repo.commit_all("second");
+
+    // git writes `<old> <new>` per rewritten commit.
+    let stdin = format!("{} {first}\n{} {second}\n", "0".repeat(40), "1".repeat(40));
+    let mut out: Vec<u8> = Vec::new();
+    madelog::run_in_with(
+        repo.root(),
+        &["hook", "post-rewrite"],
+        stdin.as_bytes(),
+        &mut out,
+    )
+    .unwrap();
+
+    let recorded: Vec<String> = commit_payloads(&repo).into_iter().map(|c| c.sha).collect();
+    assert_eq!(recorded, vec![first, second]);
+}
+
+#[test]
+fn post_rewrite_skips_commits_that_are_already_recorded() {
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.txt", "one\n");
+    let sha = repo.commit_all("first");
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+
+    let stdin = format!("{} {sha}\n", "0".repeat(40));
+    let mut out: Vec<u8> = Vec::new();
+    madelog::run_in_with(
+        repo.root(),
+        &["hook", "post-rewrite"],
+        stdin.as_bytes(),
+        &mut out,
+    )
+    .unwrap();
+
+    assert_eq!(commit_payloads(&repo).len(), 1);
+}
+
+#[test]
+fn post_rewrite_with_nothing_on_stdin_does_nothing() {
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.txt", "one\n");
+    repo.commit_all("first");
+
+    let mut out: Vec<u8> = Vec::new();
+    madelog::run_in_with(
+        repo.root(),
+        &["hook", "post-rewrite"],
+        std::io::empty(),
+        &mut out,
+    )
+    .unwrap();
+
+    assert!(commit_payloads(&repo).is_empty());
+}
+
+#[test]
+fn the_new_hooks_never_fail_without_madelog_init() {
+    let repo = init_repo();
+    isolate_device_key();
+    repo.write("a.txt", "one\n");
+    repo.commit_all("first");
+
+    madelog::run_in(repo.root(), &["hook", "post-merge"]).expect("post-merge must not fail");
+    let mut out: Vec<u8> = Vec::new();
+    madelog::run_in_with(
+        repo.root(),
+        &["hook", "post-rewrite"],
+        &b"0000000000000000000000000000000000000000 1111111111111111111111111111111111111111\n"[..],
+        &mut out,
+    )
+    .expect("post-rewrite must not fail");
+}

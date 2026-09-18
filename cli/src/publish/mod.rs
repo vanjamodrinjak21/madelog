@@ -21,6 +21,9 @@ pub const MAX_HTML_BYTES: usize = 2 * 1024 * 1024;
 /// Long enough for a slow link, short enough that a hung server is not a hang.
 pub const TIMEOUT: Duration = Duration::from_secs(30);
 
+/// `madelog doctor` waits this long for `/healthz` and no longer.
+pub const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// The bytes `POST /v1/pages` verifies. `slug` is `""` on a first publish.
 pub fn publish_message(root: &str, published_ts: &str, slug: &str) -> String {
     format!("{root}\n{published_ts}\n{slug}")
@@ -283,6 +286,24 @@ impl Client {
             return Ok(());
         }
         Err(refusal("deleting the page", status, &answer))
+    }
+
+    /// `GET /healthz` — is a madelog server answering at all?
+    ///
+    /// `madelog doctor` asks this, so it gets its own short timeout: a health
+    /// check that hangs for thirty seconds is not a health check.
+    pub fn healthz(&self) -> Result<u16, ApiError> {
+        let url = format!("{}/healthz", self.base);
+        let agent = ureq::Agent::config_builder()
+            .timeout_global(Some(HEALTH_TIMEOUT))
+            .http_status_as_error(false)
+            .build()
+            .new_agent();
+        let response = agent
+            .get(&url)
+            .call()
+            .map_err(|e| ApiError::Transport(anyhow::anyhow!("could not reach {url}: {e}")))?;
+        Ok(response.status().as_u16())
     }
 
     fn send_json(&self, method: &str, url: &str, body: &str) -> Result<(u16, String), ApiError> {
