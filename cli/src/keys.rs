@@ -57,7 +57,11 @@ impl DeviceKey {
         // place. `hard_link` fails if the target already exists, so two
         // concurrent `pop init` runs can never observe a half-written key:
         // the loser simply loads the winner's key.
-        let tmp = dir.join(format!(".device.key.{}.tmp", std::process::id()));
+        let tmp = dir.join(format!(
+            ".device.key.{}.{}.tmp",
+            std::process::id(),
+            hex::encode(&signing.verifying_key().to_bytes()[..4])
+        ));
         std::fs::write(&tmp, body).with_context(|| format!("writing {}", tmp.display()))?;
         restrict_file(&tmp)?;
         let linked = std::fs::hard_link(&tmp, &path);

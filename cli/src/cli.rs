@@ -43,7 +43,7 @@ pub enum Command {
     /// Render the project page and publish it.
     Publish(PublishArgs),
     /// Look for patterns in the log and record them.
-    Analyze,
+    Analyze(AnalyzeArgs),
     /// Write weekly summaries.
     Summarize(SummarizeArgs),
     /// Work with existing summaries.
@@ -153,10 +153,20 @@ pub struct PublishArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct AnalyzeArgs {
+    /// Print the patterns and moments as JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct SummarizeArgs {
     /// Only rebuild one week, counted from the first commit.
     #[arg(long)]
     pub week: Option<u32>,
+    /// Write a new summary even for weeks that already have one.
+    #[arg(long)]
+    pub force: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -202,8 +212,8 @@ pub fn dispatch(cli: Cli, ctx: &mut Ctx<'_>) -> Result<()> {
                 yes: args.yes,
             },
         ),
-        Command::Analyze => commands::analyze::run(ctx),
-        Command::Summarize(args) => commands::summarize::run(ctx, args.week),
+        Command::Analyze(args) => commands::analyze::run(ctx, args.json),
+        Command::Summarize(args) => commands::summarize::run(ctx, args.week, args.force),
         Command::Summary(SummaryCommand::Edit { event_id }) => {
             commands::summarize::edit(ctx, &event_id)
         }

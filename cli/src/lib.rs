@@ -11,7 +11,10 @@ pub mod event;
 pub mod gitai;
 pub mod gitrepo;
 pub mod keys;
+pub mod moments;
+pub mod patterns;
 pub mod store;
+pub mod summarize;
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
