@@ -18,7 +18,7 @@ Commands:
 ReleaseDate: __RELEASE_DATE__
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/vanjamodrinjak/madelog/releases/download/v__VERSION__/madelog-__VERSION__-x86_64-pc-windows-msvc.zip
+    InstallerUrl: https://github.com/vanjamodrinjak21/madelog/releases/download/v__VERSION__/madelog-__VERSION__-x86_64-pc-windows-msvc.zip
     InstallerSha256: __SHA256_X86_64_PC_WINDOWS_MSVC__
 ManifestType: installer
 ManifestVersion: 1.6.0

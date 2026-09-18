@@ -36,7 +36,7 @@ Git AI and Ollama, and offers to set up the repository you are in.
 Until the first release is tagged, build from source:
 
 ```sh
-git clone https://github.com/vanjamodrinjak/madelog
+git clone https://github.com/vanjamodrinjak21/madelog
 cd madelog
 cargo install --path cli
 madelog onboard

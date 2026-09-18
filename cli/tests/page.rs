@@ -79,7 +79,7 @@ fn design_mock_context_deserialises_and_renders() {
     ));
     assert!(html.contains("Students and juniors applying for a first job"));
     assert!(html.contains("Built over 13 working days between 3 Sep 2026 and 17 Sep 2026"));
-    assert!(html.contains("github.com/vanjamodrinjak/madelog"));
+    assert!(html.contains("github.com/vanjamodrinjak21/madelog"));
     assert!(html.contains("<span>claude-code</span>"));
 
     // 2. timeline: rendered server-side, no JS needed to read it

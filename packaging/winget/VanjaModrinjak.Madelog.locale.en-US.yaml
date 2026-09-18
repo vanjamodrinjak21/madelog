@@ -6,12 +6,12 @@ PackageVersion: __VERSION__
 PackageLocale: en-US
 Publisher: Vanja Modrinjak
 PublisherUrl: https://madelog.app
-PublisherSupportUrl: https://github.com/vanjamodrinjak/madelog/issues
+PublisherSupportUrl: https://github.com/vanjamodrinjak21/madelog/issues
 Author: Vanja Modrinjak
 PackageName: madelog
 PackageUrl: https://madelog.app
 License: MIT
-LicenseUrl: https://github.com/vanjamodrinjak/madelog/blob/main/LICENSE
+LicenseUrl: https://github.com/vanjamodrinjak21/madelog/blob/main/LICENSE
 Copyright: Copyright (c) 2026 Vanja Modrinjak
 ShortDescription: Record how your project came together, and prove it.
 Description: |-
@@ -26,7 +26,7 @@ Tags:
   - developer
   - git
   - portfolio
-ReleaseNotesUrl: https://github.com/vanjamodrinjak/madelog/releases/tag/v__VERSION__
+ReleaseNotesUrl: https://github.com/vanjamodrinjak21/madelog/releases/tag/v__VERSION__
 Documentations:
   - DocumentLabel: Documentation
     DocumentUrl: https://madelog.app/docs/

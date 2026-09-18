@@ -28,24 +28,24 @@ class Madelog < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/vanjamodrinjak/madelog/releases/download/v#{version}/madelog-#{version}-aarch64-apple-darwin.zip"
+      url "https://github.com/vanjamodrinjak21/madelog/releases/download/v#{version}/madelog-#{version}-aarch64-apple-darwin.zip"
       sha256 "__SHA256_AARCH64_APPLE_DARWIN__"
     end
 
     on_intel do
-      url "https://github.com/vanjamodrinjak/madelog/releases/download/v#{version}/madelog-#{version}-x86_64-apple-darwin.zip"
+      url "https://github.com/vanjamodrinjak21/madelog/releases/download/v#{version}/madelog-#{version}-x86_64-apple-darwin.zip"
       sha256 "__SHA256_X86_64_APPLE_DARWIN__"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/vanjamodrinjak/madelog/releases/download/v#{version}/madelog-#{version}-aarch64-unknown-linux-gnu.zip"
+      url "https://github.com/vanjamodrinjak21/madelog/releases/download/v#{version}/madelog-#{version}-aarch64-unknown-linux-gnu.zip"
       sha256 "__SHA256_AARCH64_LINUX__"
     end
 
     on_intel do
-      url "https://github.com/vanjamodrinjak/madelog/releases/download/v#{version}/madelog-#{version}-x86_64-unknown-linux-gnu.zip"
+      url "https://github.com/vanjamodrinjak21/madelog/releases/download/v#{version}/madelog-#{version}-x86_64-unknown-linux-gnu.zip"
       sha256 "__SHA256_X86_64_LINUX__"
     end
   end

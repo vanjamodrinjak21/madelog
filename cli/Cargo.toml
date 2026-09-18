@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.75"
 description = "Record how your project came together, and prove it."
 license = "MIT"
-repository = "https://github.com/vanjamodrinjak/madelog"
+repository = "https://github.com/vanjamodrinjak21/madelog"
 
 # This crate is standalone; the repository root is not a cargo workspace.
 [workspace]
