@@ -19,6 +19,14 @@ const MAX_COMMIT_LINES: usize = 40;
 /// How many files a week names as the ones most of the work landed in.
 pub const TOP_FILES: usize = 3;
 
+/// One file inside a commit, and the lines that commit changed in it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileLines {
+    pub path: String,
+    /// `added + removed` for this file alone, never the whole commit's total.
+    pub lines: u64,
+}
+
 /// One commit, reduced to what a summary may know about it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitLine {
@@ -28,7 +36,7 @@ pub struct CommitLine {
     pub files: usize,
     pub added: u64,
     pub removed: u64,
-    pub paths: Vec<String>,
+    pub paths: Vec<FileLines>,
 }
 
 /// One detected pattern, reduced the same way.
@@ -86,11 +94,12 @@ impl Week {
     pub fn top_files(&self) -> Vec<String> {
         let mut counts: BTreeMap<&str, (usize, u64)> = BTreeMap::new();
         for commit in &self.commits {
-            let lines = commit.added + commit.removed;
-            for path in &commit.paths {
-                let entry = counts.entry(path.as_str()).or_insert((0, 0));
+            for file in &commit.paths {
+                // Each path earns the lines it changed itself, not the whole
+                // commit's total, or a one-line typo rides on its neighbours.
+                let entry = counts.entry(file.path.as_str()).or_insert((0, 0));
                 entry.0 += 1;
-                entry.1 += lines;
+                entry.1 += file.lines;
             }
         }
         let mut ranked: Vec<(&str, (usize, u64))> = counts.into_iter().collect();
@@ -211,9 +220,27 @@ fn bucket_with(events: &[Event], to_date: impl Fn(&str) -> Option<NaiveDate>) ->
         return Vec::new();
     };
 
+    // When each commit was recorded, by sha. A `pattern` event carries the
+    // timestamp of the `madelog analyze` run that found it, which says nothing
+    // about when the work happened, so patterns are bucketed by the commit
+    // they are anchored to instead.
+    let commit_ts: BTreeMap<&str, &str> = events
+        .iter()
+        .filter(|e| e.kind == EventKind::Commit)
+        .filter_map(|e| e.commit_sha.as_deref().map(|sha| (sha, e.ts.as_str())))
+        .collect();
+
     let mut weeks: BTreeMap<u32, Week> = BTreeMap::new();
     for event in events {
-        let Some(date) = to_date(&event.ts) else {
+        let ts = match event.kind {
+            EventKind::Pattern => event
+                .commit_sha
+                .as_deref()
+                .and_then(|sha| commit_ts.get(sha).copied())
+                .unwrap_or(event.ts.as_str()),
+            _ => event.ts.as_str(),
+        };
+        let Some(date) = to_date(ts) else {
             continue;
         };
         let index = week_index(origin, date);
@@ -228,7 +255,14 @@ fn bucket_with(events: &[Event], to_date: impl Fn(&str) -> Option<NaiveDate>) ->
                     files: payload.files.len(),
                     added: payload.files.iter().map(|f| f.added).sum(),
                     removed: payload.files.iter().map(|f| f.removed).sum(),
-                    paths: payload.files.iter().map(|f| f.path.clone()).collect(),
+                    paths: payload
+                        .files
+                        .iter()
+                        .map(|f| FileLines {
+                            path: f.path.clone(),
+                            lines: f.added + f.removed,
+                        })
+                        .collect(),
                 };
                 weeks
                     .entry(index)
@@ -305,12 +339,21 @@ mod tests {
     use crate::event::{CommitFile, FileStatus, PatternKind, Payload};
 
     fn event(ts: &str, kind: EventKind, payload: serde_json::Value) -> Event {
+        event_on(ts, None, kind, payload)
+    }
+
+    fn event_on(
+        ts: &str,
+        commit_sha: Option<&str>,
+        kind: EventKind,
+        payload: serde_json::Value,
+    ) -> Event {
         Event {
             seq: 1,
             id: "id".into(),
             ts: ts.into(),
             kind,
-            commit_sha: None,
+            commit_sha: commit_sha.map(str::to_string),
             payload,
             prev_hash: crate::event::GENESIS_PREV_HASH.into(),
             hash: "h".into(),
@@ -318,8 +361,13 @@ mod tests {
     }
 
     fn commit(ts: &str, message: &str, files: &[(&str, u64, u64)]) -> Event {
+        commit_at(ts, &"a".repeat(40), message, files)
+    }
+
+    /// A commit event anchored to `sha`, the way the post-commit hook writes it.
+    fn commit_at(ts: &str, sha: &str, message: &str, files: &[(&str, u64, u64)]) -> Event {
         let payload = Payload::Commit(CommitPayload {
-            sha: "a".repeat(40),
+            sha: sha.to_string(),
             message: message.into(),
             author: "Test Person".into(),
             parents: vec![],
@@ -335,7 +383,7 @@ mod tests {
                 .collect(),
             secs_since_prev: None,
         });
-        event(ts, EventKind::Commit, payload.to_value())
+        event_on(ts, Some(sha), EventKind::Commit, payload.to_value())
     }
 
     fn decision(ts: &str, text: &str, private: bool) -> Event {
@@ -347,12 +395,18 @@ mod tests {
     }
 
     fn pattern(ts: &str, kind: PatternKind, detail: &str) -> Event {
+        pattern_on(ts, None, kind, detail)
+    }
+
+    /// A pattern event anchored to the last commit it covers, the way
+    /// `madelog analyze` writes it.
+    fn pattern_on(ts: &str, sha: Option<&str>, kind: PatternKind, detail: &str) -> Event {
         let payload = Payload::Pattern(PatternPayload {
             pattern: kind,
-            commits: vec!["b".repeat(40)],
+            commits: vec![sha.unwrap_or(&"b".repeat(40)).to_string()],
             detail: detail.into(),
         });
-        event(ts, EventKind::Pattern, payload.to_value())
+        event_on(ts, sha, EventKind::Pattern, payload.to_value())
     }
 
     /// Everything is already UTC in these tests, so "local" is the identity.
@@ -531,6 +585,72 @@ mod tests {
             ]
         );
         assert_eq!(weeks[0].days_active(), 3);
+    }
+
+    #[test]
+    fn a_pattern_belongs_to_the_week_of_the_commit_it_is_about() {
+        // The work is in week 1; `madelog analyze` only ran three weeks later.
+        let first = "b".repeat(40);
+        let last = "c".repeat(40);
+        let events = vec![
+            commit_at("2026-09-14T09:00:00Z", &first, "first", &[("a.rs", 1, 0)]),
+            commit_at(
+                "2026-10-05T09:00:00Z",
+                &last,
+                "much later",
+                &[("a.rs", 1, 0)],
+            ),
+            pattern_on(
+                "2026-10-05T18:00:00Z",
+                Some(&first),
+                PatternKind::Revert,
+                "reverted a.rs",
+            ),
+        ];
+        let weeks = bucket_with(&events, utc_date);
+        assert_eq!(weeks.len(), 2);
+        assert_eq!(weeks[0].week_start(), "2026-09-14");
+        assert_eq!(weeks[0].patterns.len(), 1, "the week of the commit");
+        assert!(
+            weeks[1].patterns.is_empty(),
+            "not the week analyze happened to run: {:?}",
+            weeks[1].patterns
+        );
+    }
+
+    #[test]
+    fn a_pattern_with_no_anchor_keeps_its_own_timestamp() {
+        let events = vec![
+            commit("2026-09-14T09:00:00Z", "first", &[("a.rs", 1, 0)]),
+            pattern("2026-09-21T09:00:00Z", PatternKind::Stall, "a long gap"),
+        ];
+        let weeks = bucket_with(&events, utc_date);
+        assert_eq!(weeks.len(), 2);
+        assert_eq!(weeks[1].patterns.len(), 1);
+    }
+
+    #[test]
+    fn top_files_counts_the_lines_each_file_changed_itself() {
+        // Both files are touched by both commits, so the ranking comes down to
+        // lines: 501 for the big file against 2 for the README. Charging every
+        // path the whole commit's total would tie them and sort by name.
+        let events = vec![
+            commit(
+                "2026-09-14T09:00:00Z",
+                "one",
+                &[("README.md", 1, 0), ("src/big.rs", 500, 0)],
+            ),
+            commit(
+                "2026-09-15T09:00:00Z",
+                "two",
+                &[("README.md", 1, 0), ("src/big.rs", 1, 0)],
+            ),
+        ];
+        let weeks = bucket_with(&events, utc_date);
+        assert_eq!(
+            weeks[0].top_files(),
+            vec!["src/big.rs".to_string(), "README.md".to_string()]
+        );
     }
 
     #[test]

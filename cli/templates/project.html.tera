@@ -395,7 +395,7 @@ section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
       <dd><a href="{{ project.screenshot }}">{{ project.screenshot }}</a></dd>
 {%- endif %}
       <dt>Record</dt>
-      <dd>Hash-chained log of {{ timeline | length }} event{{ timeline | length | pluralize }}{% if badge.published %}, root confirmed by the server on {{ badge.published.received_at | day }}{% else %}, rendered on this machine{% endif %}. <a href="#badge">Badge</a></dd>
+      <dd>Hash-chained log of {{ chained_events }} event{{ chained_events | pluralize }}{% if badge.published %}, root confirmed by the server on {{ badge.published.received_at | day }}{% else %}, rendered on this machine{% endif %}. <a href="#badge">Badge</a></dd>
     </dl>
   </section>
 

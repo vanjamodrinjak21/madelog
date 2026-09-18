@@ -39,9 +39,21 @@ fn onboard_yes_sets_the_repo_up_and_is_idempotent() {
     assert!(repo.path(".git/hooks/post-commit").is_file());
     assert_eq!(events(&repo).len(), 1);
 
-    let again = madelog::run_capture(repo.root(), &["onboard", "--yes"]).unwrap();
-    assert!(again.contains("already set up"), "{again}");
-    assert_eq!(events(&repo).len(), 1, "re-running records nothing new");
+    let md = std::fs::read_to_string(repo.path(".madelog/intent.md")).unwrap();
+    for flag in ["--yes", "--project"] {
+        let again = madelog::run_capture(repo.root(), &["onboard", flag]).unwrap();
+        assert!(again.contains("already set up"), "{flag}: {again}");
+        assert_eq!(
+            events(&repo).len(),
+            1,
+            "{flag} records nothing new on a repo that is already set up"
+        );
+        assert_eq!(
+            std::fs::read_to_string(repo.path(".madelog/intent.md")).unwrap(),
+            md,
+            "{flag} leaves intent.md alone"
+        );
+    }
 }
 
 #[test]

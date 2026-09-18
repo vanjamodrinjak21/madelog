@@ -387,6 +387,64 @@ func TestServePage(t *testing.T) {
 	}
 }
 
+// `curl -I <page url>` is the first thing anyone reaches for when a link looks
+// broken, and uptime checkers poll /healthz with HEAD. Both must answer 200
+// with the same headers as GET and no body.
+func TestHeadIsRoutedLikeGet(t *testing.T) {
+	h := newHarness(t)
+	d := h.newDevice()
+	s := "quiet-heron-k7m2"
+	if rec := h.do(http.MethodPost, "/v1/pages", publishBody(d, &s, "<!doctype html><h1>hi</h1>", rootHex)); rec.Code != http.StatusOK {
+		t.Fatal(rec.Body.String())
+	}
+
+	// A real server: net/http is what drops the body of a HEAD response.
+	ts := httptest.NewServer(h.srv)
+	defer ts.Close()
+
+	for _, tc := range []struct {
+		path        string
+		contentType string
+	}{
+		{"/p/" + s, "text/html; charset=utf-8"},
+		{"/healthz", "application/json; charset=utf-8"},
+	} {
+		resp, err := http.Head(ts.URL + tc.path)
+		if err != nil {
+			t.Fatalf("HEAD %s: %v", tc.path, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("HEAD %s = %d, want 200", tc.path, resp.StatusCode)
+		}
+		if ct := resp.Header.Get("Content-Type"); ct != tc.contentType {
+			t.Fatalf("HEAD %s Content-Type = %q, want %q", tc.path, ct, tc.contentType)
+		}
+		if len(body) != 0 {
+			t.Fatalf("HEAD %s answered with a body: %q", tc.path, body)
+		}
+	}
+
+	if cc := mustHead(t, ts.URL+"/p/"+s).Header.Get("Cache-Control"); cc != "public, max-age=60" {
+		t.Fatalf("HEAD /p/{slug} Cache-Control = %q", cc)
+	}
+	if code := mustHead(t, ts.URL+"/p/no-such-slug-aaaa").StatusCode; code != http.StatusNotFound {
+		t.Fatalf("HEAD an unknown slug = %d, want 404", code)
+	}
+}
+
+func mustHead(t *testing.T, url string) *http.Response {
+	t.Helper()
+	resp, err := http.Head(url)
+	if err != nil {
+		t.Fatalf("HEAD %s: %v", url, err)
+	}
+	resp.Body.Close()
+	return resp
+}
+
 func TestVerify(t *testing.T) {
 	h := newHarness(t)
 	d := h.newDevice()

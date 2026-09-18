@@ -56,8 +56,12 @@ pub enum ApiError {
     #[error("{message}")]
     Refused { status: u16, message: String },
     /// Nothing answered, or what answered was not the madelog server.
+    ///
+    /// The inner error is *not* declared as a source: its Display is already
+    /// the whole of this error's Display, and anyhow's `{:#}` would walk the
+    /// chain and print the same sentence a second time.
     #[error("{0:#}")]
-    Transport(#[source] anyhow::Error),
+    Transport(anyhow::Error),
 }
 
 impl ApiError {
@@ -529,6 +533,18 @@ mod tests {
         Client::new(&gone)
             .delete_page("quiet-heron-k7m2", "dev-1", &"ef".repeat(64))
             .unwrap();
+    }
+
+    #[test]
+    fn a_transport_error_says_its_piece_once() {
+        let err: anyhow::Error =
+            ApiError::Transport(anyhow::anyhow!("could not reach http://127.0.0.1:9")).into();
+        let text = format!("{err:#}");
+        assert_eq!(
+            text.matches("could not reach http://127.0.0.1:9").count(),
+            1,
+            "the anyhow chain must not repeat the message: {text}"
+        );
     }
 
     #[test]

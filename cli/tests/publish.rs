@@ -841,8 +841,38 @@ fn nothing_listening_leaves_the_page_on_disk_and_says_why() {
         madelog::run_capture(repo.root(), &["publish", "--yes", "--server", &dead]).unwrap_err();
     let text = format!("{err:#}");
     assert!(text.contains("could not reach"), "{text}");
+    assert_eq!(
+        text.matches("could not reach").count(),
+        1,
+        "the transport error is printed once, not once per link in the chain: {text}"
+    );
     assert!(
         repo.path(".madelog/site/index.html").is_file(),
         "the page is written before the upload is attempted"
     );
+}
+
+#[test]
+fn an_empty_server_flag_is_refused_rather_than_ignored() {
+    let repo = repo_with_history(1);
+    madelog::run_capture(
+        repo.root(),
+        &["config", "set", "server.url", "https://madelog.example"],
+    )
+    .unwrap();
+
+    for args in [
+        vec!["publish", "--yes", "--server", ""],
+        vec!["publish", "--local", "--yes", "--server", "  "],
+        vec!["unpublish", "--server", ""],
+    ] {
+        let err = madelog::run_capture(repo.root(), &args).unwrap_err();
+        let text = format!("{err:#}");
+        assert_eq!(exit_code(&err), Some(2), "{args:?}: {text}");
+        assert!(text.contains("--server"), "{args:?}: {text}");
+        assert!(
+            !repo.path(".madelog/site/index.html").exists(),
+            "{args:?} renders nothing"
+        );
+    }
 }

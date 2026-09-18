@@ -112,6 +112,10 @@ pub struct PageContext {
     pub ratio: Option<Ratio>,
     pub summaries: Vec<SummaryPayload>,
     pub hidden_sessions: u64,
+    /// Every event in the chain, which is what `madelog verify` counts. The
+    /// timeline shows fewer: intents, patterns, summaries, hides and private
+    /// decisions are chained but not drawn.
+    pub chained_events: u64,
     pub badge: Badge,
 }
 
@@ -142,6 +146,7 @@ pub fn build_context(root: &Path, published: Option<Published>) -> Result<PageCo
         ratio: ratio(&events),
         summaries: crate::summarize::latest_summaries(&events),
         hidden_sessions,
+        chained_events: events.len() as u64,
         badge: Badge {
             root: chain_root,
             first_ts,

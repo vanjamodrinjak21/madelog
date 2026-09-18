@@ -107,7 +107,7 @@ fn trim_stop(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::summarize::weeks::{CommitLine, PatternLine};
+    use crate::summarize::weeks::{CommitLine, FileLines, PatternLine};
     use chrono::NaiveDate;
 
     fn day(s: &str) -> NaiveDate {
@@ -121,7 +121,13 @@ mod tests {
             files: paths.len(),
             added: 10,
             removed: 2,
-            paths: paths.iter().map(|p| (*p).to_string()).collect(),
+            paths: paths
+                .iter()
+                .map(|p| FileLines {
+                    path: (*p).to_string(),
+                    lines: 1,
+                })
+                .collect(),
         }
     }
 

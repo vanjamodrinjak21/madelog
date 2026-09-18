@@ -126,6 +126,19 @@ fn hide_appends_a_hide_event_for_an_ai_session() {
     // The hidden session stays in the chain.
     assert!(events(&repo).iter().any(|e| e.id == session.id));
     madelog::run_capture(repo.root(), &["verify"]).expect("chain still verifies");
+
+    // Hiding it again is a no-op that says so, not a second hide event.
+    let before = events(&repo).len();
+    let out = madelog::run_capture(repo.root(), &["hide", &session.id]).unwrap();
+    assert!(out.contains("already hidden"), "{out}");
+    assert_eq!(events(&repo).len(), before, "no second hide event");
+    assert_eq!(
+        events(&repo)
+            .iter()
+            .filter(|e| e.kind == EventKind::Hide)
+            .count(),
+        1
+    );
 }
 
 #[test]

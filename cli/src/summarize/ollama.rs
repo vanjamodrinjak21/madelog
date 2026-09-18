@@ -35,9 +35,7 @@ happened, what was decided, what stood out.";
 /// Which host to talk to: the config key if the config has one, then
 /// `OLLAMA_HOST`, then localhost.
 pub fn host(config: &crate::config::Config) -> String {
-    // `llm.host` is not a key madelog v1 writes; reading it through `get` means a
-    // later version can add it without this file changing.
-    let configured = config.get("llm.host").ok().filter(|v| !v.trim().is_empty());
+    let configured = config.llm.host.clone().filter(|v| !v.trim().is_empty());
     let raw = configured
         .or_else(|| std::env::var("OLLAMA_HOST").ok())
         .filter(|v| !v.trim().is_empty())
@@ -428,12 +426,21 @@ mod tests {
 
     #[test]
     fn the_host_falls_back_from_config_to_env_to_localhost() {
-        let config = crate::config::Config::default();
-        // `llm.host` is not a key yet, so the environment decides.
+        let mut config = crate::config::Config::default();
+        // Nothing configured, so the environment decides.
         std::env::remove_var("OLLAMA_HOST");
         assert_eq!(host(&config), DEFAULT_HOST);
         std::env::set_var("OLLAMA_HOST", "127.0.0.1:1234");
         assert_eq!(host(&config), "http://127.0.0.1:1234");
+
+        // `llm.host` wins over the environment, and gets a scheme like any host.
+        config.set("llm.host", "box.lan:11434").unwrap();
+        assert_eq!(host(&config), "http://box.lan:11434");
+
+        // A blank value is the same as no value at all.
+        config.set("llm.host", "   ").unwrap();
+        assert_eq!(host(&config), "http://127.0.0.1:1234");
         std::env::remove_var("OLLAMA_HOST");
+        assert_eq!(host(&config), DEFAULT_HOST);
     }
 }

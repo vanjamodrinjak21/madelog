@@ -85,6 +85,65 @@ fn init_keeps_an_existing_hook_and_is_idempotent() {
 }
 
 #[test]
+fn a_second_init_without_answers_records_nothing() {
+    let repo = init_repo();
+    init_madelog(&repo);
+    let before = events(&repo);
+    let md_before = std::fs::read_to_string(repo.path(".madelog/intent.md")).unwrap();
+
+    let out = madelog::run_capture(repo.root(), &["init", "--yes"]).unwrap();
+
+    assert!(out.contains("already recording"), "{out}");
+    assert_eq!(events(&repo).len(), before.len(), "no second intent event");
+    assert_eq!(
+        std::fs::read_to_string(repo.path(".madelog/intent.md")).unwrap(),
+        md_before,
+        "intent.md is left alone"
+    );
+    // The idempotent parts still ran.
+    assert!(repo.path(".git/hooks/post-commit").is_file());
+}
+
+#[test]
+fn a_second_init_with_one_answer_merges_the_rest() {
+    let repo = init_repo();
+    init_madelog(&repo);
+
+    madelog::run_capture(
+        repo.root(),
+        &["init", "--what", "a bank statement reconciler", "--yes"],
+    )
+    .unwrap();
+
+    let evs = events(&repo);
+    assert_eq!(evs.len(), 2, "a new intent, on top of the old one");
+    assert_eq!(evs[0].kind, EventKind::Intent);
+    assert_eq!(evs[1].kind, EventKind::Intent);
+
+    let intent: IntentPayload = serde_json::from_value(evs[1].payload.clone()).unwrap();
+    assert_eq!(intent.what, "a bank statement reconciler", "the flag wins");
+    assert_eq!(
+        intent.for_whom, "a studio hiring juniors",
+        "the missing answer carries over"
+    );
+    assert_eq!(intent.tools, vec!["claude-code", "cursor"]);
+    assert!(
+        intent.record_ai_sessions,
+        "and so does the AI-session answer"
+    );
+
+    let md = std::fs::read_to_string(repo.path(".madelog/intent.md")).unwrap();
+    assert!(md.contains("a bank statement reconciler"), "{md}");
+    assert!(md.contains("a studio hiring juniors"), "{md}");
+
+    // `madelog export` reports the newest intent, which is what the page shows.
+    let out = madelog::run_capture(repo.root(), &["export"]).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["intent"]["what"], "a bank statement reconciler");
+    assert_eq!(v["intent"]["for_whom"], "a studio hiring juniors");
+}
+
+#[test]
 fn init_outside_a_git_repository_fails() {
     isolate_device_key();
     let dir = tempfile::TempDir::new().unwrap();

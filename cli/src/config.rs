@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 pub const KEYS: &[&str] = &[
     "llm.provider",
     "llm.model",
+    "llm.host",
     "llm.remote",
     "server.url",
     "server.device_id",
@@ -34,6 +35,9 @@ pub struct Llm {
     /// `auto | ollama | none`
     pub provider: String,
     pub model: String,
+    /// Where Ollama listens. Unset means `OLLAMA_HOST`, then localhost.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
     /// Remote APIs are never used unless you turn this on.
     pub remote: bool,
 }
@@ -43,6 +47,7 @@ impl Default for Llm {
         Llm {
             provider: "auto".into(),
             model: "qwen3:4b".into(),
+            host: None,
             remote: false,
         }
     }
@@ -121,6 +126,7 @@ impl Config {
         Ok(match key {
             "llm.provider" => self.llm.provider.clone(),
             "llm.model" => self.llm.model.clone(),
+            "llm.host" => self.llm.host.clone().unwrap_or_default(),
             "llm.remote" => self.llm.remote.to_string(),
             "server.url" => self.server.url.clone(),
             "server.device_id" => self.server.device_id.clone().unwrap_or_default(),
@@ -144,6 +150,7 @@ impl Config {
                 self.llm.provider = value.to_string();
             }
             "llm.model" => self.llm.model = value.to_string(),
+            "llm.host" => self.llm.host = optional(value),
             "llm.remote" => self.llm.remote = parse_bool(value)?,
             "server.url" => self.server.url = value.to_string(),
             "server.device_id" => self.server.device_id = optional(value),
@@ -242,6 +249,33 @@ mod tests {
         assert!(c.set("llm.remote", "maybe").is_err());
         assert!(c.get("nope").is_err());
         assert!(c.set("nope", "x").is_err());
+    }
+
+    #[test]
+    fn llm_host_is_a_real_key_that_defaults_to_nothing() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("config.toml");
+
+        let mut c = Config::default();
+        assert_eq!(c.llm.host, None, "no host unless you name one");
+        assert_eq!(c.get("llm.host").unwrap(), "");
+
+        c.set("llm.host", "http://box.lan:11434").unwrap();
+        c.save(&path).unwrap();
+        assert_eq!(
+            Config::load(&path).unwrap().llm.host.as_deref(),
+            Some("http://box.lan:11434")
+        );
+
+        // `deny_unknown_fields` must not trip over a file that names it.
+        std::fs::write(&path, "[llm]\nhost = \"http://box.lan:11434\"\n").unwrap();
+        assert_eq!(
+            Config::load(&path).unwrap().get("llm.host").unwrap(),
+            "http://box.lan:11434"
+        );
+
+        c.set("llm.host", "").unwrap();
+        assert_eq!(c.llm.host, None, "clearing it stores nothing");
     }
 
     #[test]

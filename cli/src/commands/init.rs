@@ -58,31 +58,14 @@ pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
         yes,
     } = opts;
 
-    let what = answer(ctx, what, yes, "What are you building? ")?;
-    let for_whom = answer(ctx, for_whom, yes, "Who is it for? ")?;
-    let tools_raw = answer(
-        ctx,
-        tools,
-        yes,
-        "Which AI tools do you use? (comma separated) ",
-    )?;
-    let tools: Vec<String> = tools_raw
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .collect();
-    let record_ai_sessions = match record_ai_sessions {
-        Some(v) => v,
-        None if yes => true,
-        None => ctx.ask_yes_no("Record AI sessions from Git AI?", true)?,
-    };
+    // What this repository already recorded, if anything. A second `init` is a
+    // top-up, not a fresh start: it must not quietly replace the intent the
+    // page and `madelog export` read.
+    let previous = latest_intent(&madelog_dir)?;
+    let answers_given = what.is_some() || for_whom.is_some() || tools.is_some();
 
     std::fs::create_dir_all(&madelog_dir)
         .with_context(|| format!("creating {}", madelog_dir.display()))?;
-
-    write_intent_md(&madelog_dir, &what, &for_whom, &tools, record_ai_sessions)?;
-
     let config_path = madelog_dir.join("config.toml");
     let mut config = Config::load(&config_path)?;
     if config.project.name.is_empty() {
@@ -93,37 +76,109 @@ pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
     }
     config.save(&config_path)?;
 
-    let store = Store::open(&madelog_dir.join("log.db"))?;
-    let head = repo.head_sha()?;
-    store.append_payload(
-        head.as_deref(),
-        &Payload::Intent(IntentPayload {
-            what: what.clone(),
-            for_whom: for_whom.clone(),
-            tools: tools.clone(),
-            record_ai_sessions,
-        }),
-    )?;
-
+    // Everything below this line is idempotent and runs on every `init`.
     add_to_git_exclude(&repo.git_dir())?;
     let hook_command = hook_command_for(&workdir, crate::current_exe().as_deref());
     install_post_commit_hook(&repo.git_dir(), &hook_command)?;
     DeviceKey::load_or_create()?;
+    // Opening the store creates the log if this is the first run.
+    let store = Store::open(&madelog_dir.join("log.db"))?;
 
-    ctx.say(&format!("madelog is recording in {}", workdir.display()))?;
-    ctx.say("  .madelog/intent.md      what you are building, in your own words")?;
-    ctx.say("  .madelog/log.db         the event log, hash chained")?;
-    ctx.say("  .madelog/config.toml    settings, including privacy.redact")?;
-    ctx.say("Your commits are recorded from now on. Nothing leaves this machine.")?;
-    ctx.blank()?;
-    ctx.say("Next: `madelog note \"why you did it that way\"` after a decision.")?;
-    if record_ai_sessions && which("git-ai").is_none() {
+    let intent = match &previous {
+        // Already recording, and nothing new was said: leave the log and
+        // intent.md exactly as they are.
+        Some(_) if !answers_given => {
+            ctx.say(&format!(
+                "madelog is already recording in {}",
+                workdir.display()
+            ))?;
+            ctx.say("Nothing changed. Pass --what, --for-whom or --tools to record a new intent.")?;
+            return Ok(());
+        }
+        // Already recording, and something new was said: a new intent event
+        // with the answers merged over the last one.
+        Some(previous) => IntentPayload {
+            what: given(what).unwrap_or_else(|| previous.what.clone()),
+            for_whom: given(for_whom).unwrap_or_else(|| previous.for_whom.clone()),
+            tools: tools
+                .as_deref()
+                .map(tool_list)
+                .unwrap_or_else(|| previous.tools.clone()),
+            record_ai_sessions: record_ai_sessions.unwrap_or(previous.record_ai_sessions),
+        },
+        // The first `init`: ask for whatever was not given.
+        None => {
+            let what = answer(ctx, what, yes, "What are you building? ")?;
+            let for_whom = answer(ctx, for_whom, yes, "Who is it for? ")?;
+            let tools_raw = answer(
+                ctx,
+                tools,
+                yes,
+                "Which AI tools do you use? (comma separated) ",
+            )?;
+            IntentPayload {
+                what,
+                for_whom,
+                tools: tool_list(&tools_raw),
+                record_ai_sessions: match record_ai_sessions {
+                    Some(v) => v,
+                    None if yes => true,
+                    None => ctx.ask_yes_no("Record AI sessions from Git AI?", true)?,
+                },
+            }
+        }
+    };
+
+    write_intent_md(&madelog_dir, &intent)?;
+    store.append_payload(
+        repo.head_sha()?.as_deref(),
+        &Payload::Intent(intent.clone()),
+    )?;
+
+    if previous.is_some() {
+        ctx.say(&format!("recorded a new intent in {}", workdir.display()))?;
+        ctx.say("  .madelog/intent.md      rewritten with the merged answers")?;
+        ctx.say("The old intent stays in the chain; the page reads the newest one.")?;
+    } else {
+        ctx.say(&format!("madelog is recording in {}", workdir.display()))?;
+        ctx.say("  .madelog/intent.md      what you are building, in your own words")?;
+        ctx.say("  .madelog/log.db         the event log, hash chained")?;
+        ctx.say("  .madelog/config.toml    settings, including privacy.redact")?;
+        ctx.say("Your commits are recorded from now on. Nothing leaves this machine.")?;
+        ctx.blank()?;
+        ctx.say("Next: `madelog note \"why you did it that way\"` after a decision.")?;
+    }
+    if intent.record_ai_sessions && which("git-ai").is_none() {
         ctx.say(&format!(
             "Git AI is not on your PATH, so AI sessions stay empty. Install it with: {}",
             crate::gitai::GIT_AI_INSTALL
         ))?;
     }
     Ok(())
+}
+
+/// The newest intent this repository recorded, if it has a log at all.
+fn latest_intent(madelog_dir: &Path) -> Result<Option<IntentPayload>> {
+    let db = madelog_dir.join("log.db");
+    if !db.exists() {
+        return Ok(None);
+    }
+    let found = Store::open(&db)?.last_of_kind(crate::event::EventKind::Intent)?;
+    Ok(found.and_then(|e| e.payload_as::<IntentPayload>().ok()))
+}
+
+/// A flag that was given, trimmed. `--what ""` counts as an answer: it clears
+/// the line rather than carrying the old one over.
+fn given(value: Option<String>) -> Option<String> {
+    value.map(|v| v.trim().to_string())
+}
+
+fn tool_list(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 fn answer(ctx: &mut Ctx<'_>, given: Option<String>, yes: bool, question: &str) -> Result<String> {
@@ -134,13 +189,14 @@ fn answer(ctx: &mut Ctx<'_>, given: Option<String>, yes: bool, question: &str) -
     }
 }
 
-fn write_intent_md(
-    madelog_dir: &Path,
-    what: &str,
-    for_whom: &str,
-    tools: &[String],
-    record_ai_sessions: bool,
-) -> Result<()> {
+fn write_intent_md(madelog_dir: &Path, intent: &IntentPayload) -> Result<()> {
+    let IntentPayload {
+        what,
+        for_whom,
+        tools,
+        record_ai_sessions,
+    } = intent;
+    let record_ai_sessions = *record_ai_sessions;
     let tools_line = if tools.is_empty() {
         "none".to_string()
     } else {

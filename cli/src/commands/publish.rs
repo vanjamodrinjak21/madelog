@@ -48,6 +48,7 @@ pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
 /// The same command with the preview screen handed in, so tests can walk the
 /// confirm and abort paths without a terminal.
 pub fn run_with(ctx: &mut Ctx<'_>, opts: Options, screen: &mut dyn Preview) -> Result<()> {
+    reject_empty_server(opts.server.as_deref())?;
     let root = project_root(ctx)?;
 
     refresh(ctx)?;
@@ -84,6 +85,7 @@ pub fn run_with(ctx: &mut Ctx<'_>, opts: Options, screen: &mut dyn Preview) -> R
 
 /// `madelog unpublish` — take the page down, keep the chain.
 pub fn unpublish(ctx: &mut Ctx<'_>, opts: UnpublishOptions) -> Result<()> {
+    reject_empty_server(opts.server.as_deref())?;
     let root = project_root(ctx)?;
     let config_path = config_path(&root);
     let mut config = Config::load(&config_path)?;
@@ -326,11 +328,15 @@ fn config_path(root: &Path) -> PathBuf {
 }
 
 /// `--server` wins over `server.url`; neither is allowed to be empty.
+///
+/// An empty `--server` is a typo, not a request to fall back to the config:
+/// silently publishing somewhere else is worse than refusing.
 fn server_url(config: &Config, flag: Option<&str>) -> Result<String> {
-    let chosen = flag
-        .map(str::to_string)
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| config.server.url.clone());
+    reject_empty_server(flag)?;
+    if let Some(flag) = flag {
+        return Ok(flag.to_string());
+    }
+    let chosen = config.server.url.clone();
     if chosen.trim().is_empty() {
         bail!(
             "no server to publish to. Set one with `madelog config set server.url <url>`, \
@@ -341,6 +347,21 @@ fn server_url(config: &Config, flag: Option<&str>) -> Result<String> {
 }
 
 /// RFC 3339 in UTC, to the second, exactly as the signature and the body carry it.
+/// `--server ""` is a typo — an empty argument, or a shell variable that did
+/// not expand. Falling back to the configured server would publish somewhere
+/// the person did not name, so this is refused before anything is rendered.
+fn reject_empty_server(flag: Option<&str>) -> Result<()> {
+    if flag.is_some_and(|s| s.trim().is_empty()) {
+        return Err(ExitError::new(
+            2,
+            "`--server` needs a url, for example `--server https://madelog.app`. \
+             Leave the flag off to use `server.url`, or pass `--local` to stay offline.",
+        )
+        .into());
+    }
+    Ok(())
+}
+
 fn now_rfc3339() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
@@ -358,18 +379,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_flag_beats_the_config_and_an_empty_one_does_not() {
+    fn the_flag_beats_the_config_and_an_empty_one_is_refused() {
         let mut config = Config::default();
         config.server.url = "https://madelog.app".into();
         assert_eq!(
             server_url(&config, Some("http://127.0.0.1:9")).unwrap(),
             "http://127.0.0.1:9"
         );
-        assert_eq!(
-            server_url(&config, Some("  ")).unwrap(),
-            "https://madelog.app"
-        );
         assert_eq!(server_url(&config, None).unwrap(), "https://madelog.app");
+
+        // An empty `--server` never falls back to the config.
+        for empty in ["", "  "] {
+            let err = server_url(&config, Some(empty)).unwrap_err();
+            let exit = err.downcast_ref::<ExitError>().expect("an ExitError");
+            assert_eq!(exit.code, 2, "{err:#}");
+            assert!(format!("{err:#}").contains("--server"), "{err:#}");
+        }
 
         config.server.url = String::new();
         let err = server_url(&config, None).unwrap_err();

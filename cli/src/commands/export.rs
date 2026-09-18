@@ -24,8 +24,10 @@ pub struct Export {
 pub fn build(madelog_dir: &Path) -> Result<Export> {
     let store = crate::store::Store::open(&madelog_dir.join("log.db"))?;
     let events = store.all()?;
+    // The newest intent, which is the one the page and the hook read. A second
+    // `madelog init` with new answers supersedes the first.
     let intent = store
-        .first_of_kind(EventKind::Intent)?
+        .last_of_kind(EventKind::Intent)?
         .map(|e| e.payload_as::<IntentPayload>())
         .transpose()
         .context("reading the intent event")?;

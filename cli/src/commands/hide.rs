@@ -18,6 +18,13 @@ pub fn run(ctx: &mut Ctx<'_>, event_id: &str) -> Result<()> {
         );
     }
 
+    // Hiding is idempotent: the page already says the session is hidden, and a
+    // second `hide` event would only lengthen the chain for nothing.
+    if already_hidden(&store, &target.id)? {
+        ctx.say("already hidden. Nothing was recorded; the page already leaves this session out.")?;
+        return Ok(());
+    }
+
     store.append_payload(
         target.commit_sha.as_deref(),
         &Payload::Hide(HidePayload {
@@ -27,4 +34,14 @@ pub fn run(ctx: &mut Ctx<'_>, event_id: &str) -> Result<()> {
     )?;
     ctx.say("hidden. The session stays in the chain; the page will say one session is hidden.")?;
     Ok(())
+}
+
+/// Is there already a `hide` event pointing at this session?
+fn already_hidden(store: &crate::store::Store, target_id: &str) -> Result<bool> {
+    Ok(store
+        .all()?
+        .iter()
+        .filter(|e| e.kind == EventKind::Hide)
+        .filter_map(|e| e.payload_as::<HidePayload>().ok())
+        .any(|p| p.target_id == target_id))
 }

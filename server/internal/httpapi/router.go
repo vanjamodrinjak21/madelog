@@ -78,7 +78,11 @@ func NewRouter(s store.Store, cfg Config) (http.Handler, error) {
 	r.Use(middleware.Timeout(cfg.RequestTimeout))
 
 	r.Get("/healthz", a.handleHealthz)
+	// `curl -I` and every uptime checker send HEAD. net/http drops the body
+	// for us, so the GET handlers answer both with the same headers.
+	r.Head("/healthz", a.handleHealthz)
 	r.Get("/p/{slug}", a.handleServePage)
+	r.Head("/p/{slug}", a.handleServePage)
 
 	r.Route("/v1", func(r chi.Router) {
 		r.Post("/devices", a.handleCreateDevice)

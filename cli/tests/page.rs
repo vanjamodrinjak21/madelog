@@ -67,6 +67,7 @@ fn design_mock_context_deserialises_and_renders() {
     assert_eq!(ctx.timeline.len(), 71);
     assert_eq!(ctx.moments.len(), 4);
     assert_eq!(ctx.hidden_sessions, 1);
+    assert_eq!(ctx.chained_events, 84);
 
     let html = page::render(&ctx).expect("mock renders");
     assert_html_basics(&html);
@@ -89,6 +90,9 @@ fn design_mock_context_deserialises_and_renders() {
     assert!(html.contains("class=\"tl-pt tl-ai_session\""));
     assert!(html.contains("class=\"tl-pt tl-hidden\""));
     assert!(html.contains("Every record <span class=\"count\">(71)</span>"));
+    // The record line counts the chain, not the timeline: 84 events, of which
+    // 71 are drawn.
+    assert!(html.contains("Hash-chained log of 84 events"), "{html}");
     // x = 0.1676 sits at cx 229.2 on the 78..980 axis
     assert!(html.contains("cx=\"229.2\""), "x maps onto the axis");
     assert!(html.contains("<text x=\"117.2\" y=\"134\" class=\"tl-day\">4 Sep</text>"));
@@ -324,6 +328,50 @@ fn build_context_matches_the_log() {
     assert!(ctx.project.first_ts.is_some());
     assert!(ctx.project.last_ts.is_some());
     assert!(!ctx.summaries.is_empty());
+}
+
+/// The number on the page and the number `madelog verify` prints are the same
+/// number: every chained event, not just the ones the timeline draws.
+#[test]
+fn the_record_line_counts_every_chained_event() {
+    let repo = seeded_repo();
+    let ctx = page::build_context(repo.root(), None).expect("build_context");
+    let all = Store::open(&repo.path(".madelog/log.db"))
+        .unwrap()
+        .all()
+        .unwrap();
+
+    assert_eq!(ctx.chained_events, all.len() as u64);
+    assert!(
+        ctx.chained_events > ctx.timeline.len() as u64,
+        "intents, patterns, summaries and hides are chained but not drawn: \
+         {} chained, {} on the timeline",
+        ctx.chained_events,
+        ctx.timeline.len()
+    );
+
+    let verify = madelog::run_capture(repo.root(), &["verify"]).unwrap();
+    assert!(
+        verify.contains(&format!("{} events", ctx.chained_events)),
+        "verify says {verify:?}, the page says {}",
+        ctx.chained_events
+    );
+
+    let html = page::render(&ctx).expect("renders");
+    assert!(
+        html.contains(&format!(
+            "Hash-chained log of {} events",
+            ctx.chained_events
+        )),
+        "{html}"
+    );
+
+    // The badge still spans every event, so the dates and the count agree.
+    assert_eq!(ctx.badge.first_ts.as_deref(), Some(all[0].ts.as_str()));
+    assert_eq!(
+        ctx.badge.last_ts.as_deref(),
+        Some(all[all.len() - 1].ts.as_str())
+    );
 }
 
 #[test]
