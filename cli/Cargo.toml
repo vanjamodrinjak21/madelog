@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.75"
 description = "Record how your project came together, and prove it."
 license = "MIT"
-repository = "https://github.com/pop-cli/pop"
+repository = "https://github.com/vanjamodrinjak/pop"
 
 # This crate is standalone; the repository root is not a cargo workspace.
 [workspace]
@@ -34,7 +34,11 @@ serde_json = "1"
 sha2 = "0.10"
 thiserror = "1"
 toml = "0.8"
+ureq = { version = "3", features = ["json"] }
 uuid = { version = "1", features = ["v7", "serde"] }
+tera = { version = "1", default-features = false }
+ratatui = "0.29"
+crossterm = "0.28"
 
 [dev-dependencies]
 tempfile = "3"

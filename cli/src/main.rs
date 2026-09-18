@@ -19,6 +19,11 @@ fn main() {
     if let Err(err) = pop::run_in(&cwd, &args) {
         if let Some(exit) = err.downcast_ref::<pop::ExitError>() {
             // clap already renders its own help and usage text.
+            // Help and version (exit 0) belong on stdout; errors on stderr.
+            if exit.code == 0 {
+                print!("{}", exit.message);
+                std::process::exit(0);
+            }
             eprint!(
                 "{}{}",
                 exit.message,

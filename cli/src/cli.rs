@@ -190,7 +190,14 @@ pub struct AskArgs {
 /// Parse arguments, without the leading program name.
 pub fn parse(args: &[&str]) -> Result<Cli> {
     let argv = std::iter::once("pop").chain(args.iter().copied());
-    Cli::try_parse_from(argv).map_err(|e| ExitError::new(2, e.render().to_string()).into())
+    Cli::try_parse_from(argv).map_err(|e| {
+        // `--help` and `--version` are not errors: print and exit 0.
+        let code = match e.kind() {
+            clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion => 0,
+            _ => 2,
+        };
+        ExitError::new(code, e.render().to_string()).into()
+    })
 }
 
 pub fn dispatch(cli: Cli, ctx: &mut Ctx<'_>) -> Result<()> {
