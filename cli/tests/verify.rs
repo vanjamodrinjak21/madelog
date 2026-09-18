@@ -17,9 +17,9 @@ fn verify_passes_on_an_untouched_chain() {
 
     let out = capture(&repo, &["verify"]).expect("verify passes");
     assert!(out.contains("root "), "{out}");
-    assert!(out.contains("3 events"), "{out}");
-
     let evs = events(&repo);
+    assert!(out.contains(&format!("{} events", evs.len())), "{out}");
+
     let root = evs.last().unwrap().hash.clone();
     assert!(out.contains(&root), "root printed: {out}");
 }

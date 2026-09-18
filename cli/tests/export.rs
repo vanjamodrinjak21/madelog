@@ -23,17 +23,19 @@ fn export_writes_valid_json_with_intent_config_and_events() {
     assert!(v["config"]["project"]["name"].as_str().is_some());
 
     let events = v["events"].as_array().expect("events array");
-    assert_eq!(events.len(), 3);
-    assert_eq!(events[0]["kind"], "intent");
-    assert_eq!(events[1]["kind"], "commit");
-    assert_eq!(events[2]["kind"], "decision");
+    let kinds: Vec<&str> = events.iter().map(|e| e["kind"].as_str().unwrap()).collect();
+    // The hook writes a summary of its own once a commit is in, so the exact
+    // length is not the point; the order and the shape are.
+    assert_eq!(kinds[0], "intent", "{kinds:?}");
+    assert_eq!(kinds[1], "commit", "{kinds:?}");
+    assert_eq!(kinds.last(), Some(&"decision"), "{kinds:?}");
     for (i, e) in events.iter().enumerate() {
         assert_eq!(e["seq"], (i + 1) as i64);
         assert_eq!(e["hash"].as_str().unwrap().len(), 64);
         assert_eq!(e["prev_hash"].as_str().unwrap().len(), 64);
         assert!(e["id"].as_str().unwrap().len() >= 36);
     }
-    assert_eq!(v["root"], events[2]["hash"]);
+    assert_eq!(v["root"], events.last().unwrap()["hash"]);
 }
 
 #[test]

@@ -195,6 +195,89 @@ impl Repo {
     pub fn is_ignored(&self, path: &str) -> bool {
         self.inner.is_path_ignored(path).unwrap_or(false)
     }
+
+    /// What `sha` added, and what its files ended up containing.
+    ///
+    /// Unlike [`Repo::file_changes`], nothing here is truncated or redacted:
+    /// it never leaves this process. Attribution compares these lines with
+    /// the lines an AI tool wrote and keeps only the counts.
+    pub fn commit_diff(&self, sha: &str) -> Result<crate::capture::CommitDiff> {
+        let commit = self.inner.find_commit(Oid::from_str(sha)?)?;
+        let tree = commit.tree()?;
+        let parent_tree = if commit.parent_count() > 0 {
+            Some(commit.parent(0)?.tree()?)
+        } else {
+            None
+        };
+
+        let mut opts = DiffOptions::new();
+        opts.context_lines(0);
+        let diff = self
+            .inner
+            .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))
+            .context("diffing against the first parent")?;
+
+        let mut files: Vec<crate::capture::CommitFileDiff> = Vec::new();
+        for idx in 0..diff.deltas().len() {
+            let Some(delta) = diff.get_delta(idx) else {
+                continue;
+            };
+            let Some(path) = delta
+                .new_file()
+                .path()
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+            else {
+                continue;
+            };
+            if delta.status() == Delta::Deleted {
+                continue;
+            }
+
+            let mut added: Vec<String> = Vec::new();
+            if let Ok(Some(patch)) = Patch::from_diff(&diff, idx) {
+                for h in 0..patch.num_hunks() {
+                    let count = patch.num_lines_in_hunk(h).unwrap_or(0);
+                    for l in 0..count {
+                        if let Ok(line) = patch.line_in_hunk(h, l) {
+                            if line.origin() == '+' {
+                                if let Ok(text) = std::str::from_utf8(line.content()) {
+                                    added.push(strip_newline(text).to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            let content = self
+                .inner
+                .find_blob(delta.new_file().id())
+                .ok()
+                .filter(|blob| !blob.is_binary())
+                .and_then(|blob| String::from_utf8(blob.content().to_vec()).ok())
+                .map(|text| {
+                    text.replace("\r\n", "\n")
+                        .lines()
+                        .map(str::to_string)
+                        .collect::<Vec<String>>()
+                })
+                .unwrap_or_default();
+
+            files.push(crate::capture::CommitFileDiff {
+                path,
+                added,
+                content,
+            });
+        }
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(crate::capture::CommitDiff { files })
+    }
+}
+
+fn strip_newline(text: &str) -> &str {
+    text.strip_suffix('\n')
+        .map(|t| t.strip_suffix('\r').unwrap_or(t))
+        .unwrap_or(text)
 }
 
 /// Decides which paths may contribute a diff excerpt.

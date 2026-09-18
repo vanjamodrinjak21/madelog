@@ -517,6 +517,8 @@ fn a_project_with_enough_in_it_is_not_warned_about() {
 fn aborting_the_preview_exits_one_and_sends_nothing() {
     let server = FakeServer::start();
     let repo = repo_with_history(3);
+    // The hook already rendered a page; an abort must not touch it.
+    let page_before = std::fs::read_to_string(repo.path(".madelog/site/index.html")).unwrap();
 
     let mut out: Vec<u8> = Vec::new();
     let mut input = std::io::empty();
@@ -535,6 +537,7 @@ fn aborting_the_preview_exits_one_and_sends_nothing() {
         &mut Scripted::abort(),
     )
     .unwrap_err();
+    drop(ctx);
 
     assert_eq!(exit_code(&err), Some(1));
     assert_eq!(err.to_string(), "publish aborted");
@@ -543,9 +546,10 @@ fn aborting_the_preview_exits_one_and_sends_nothing() {
         "an aborted publish sends nothing: {:?}",
         server.requests()
     );
-    assert!(
-        !repo.path(".madelog/site/index.html").exists(),
-        "an aborted publish does not even render"
+    assert_eq!(
+        std::fs::read_to_string(repo.path(".madelog/site/index.html")).unwrap(),
+        page_before,
+        "an aborted publish leaves the page exactly as the hook wrote it"
     );
 }
 
@@ -932,13 +936,15 @@ fn an_empty_server_flag_is_refused_rather_than_ignored() {
         vec!["publish", "--local", "--yes", "--server", "  "],
         vec!["unpublish", "--server", ""],
     ] {
+        let before = std::fs::read_to_string(repo.path(".madelog/site/index.html")).unwrap();
         let err = madelog::run_capture(repo.root(), &args).unwrap_err();
         let text = format!("{err:#}");
         assert_eq!(exit_code(&err), Some(2), "{args:?}: {text}");
         assert!(text.contains("--server"), "{args:?}: {text}");
-        assert!(
-            !repo.path(".madelog/site/index.html").exists(),
-            "{args:?} renders nothing"
+        assert_eq!(
+            std::fs::read_to_string(repo.path(".madelog/site/index.html")).unwrap(),
+            before,
+            "{args:?} renders nothing of its own"
         );
     }
 }

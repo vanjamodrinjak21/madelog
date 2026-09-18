@@ -77,7 +77,7 @@ pub struct InitArgs {
     /// Which AI tools do you use, comma separated.
     #[arg(long)]
     pub tools: Option<String>,
-    /// Record AI sessions from Git AI.
+    /// Record the AI sessions behind your commits.
     #[arg(long = "record-ai-sessions")]
     pub record_ai_sessions: bool,
     /// Do not record AI sessions.
@@ -86,6 +86,9 @@ pub struct InitArgs {
     /// Do not ask anything; take the answers given and defaults for the rest.
     #[arg(long, short = 'y')]
     pub yes: bool,
+    /// Do not record the commits this repository already had.
+    #[arg(long = "no-backfill")]
+    pub no_backfill: bool,
 }
 
 #[derive(Debug, Args)]
@@ -150,6 +153,19 @@ pub enum HookCommand {
     PostMerge,
     /// Record the commits a rebase or an amend produced.
     PostRewrite,
+    /// Decide what to do in whatever repository git is committing in.
+    ///
+    /// This is what the global hook calls. It records the commit if madelog
+    /// is set up here, sets madelog up first if you asked for that at
+    /// onboarding, and otherwise says so once and stays out of the way.
+    Auto(AutoArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct AutoArgs {
+    /// Which git hook called this.
+    #[arg(default_value = "post-commit")]
+    pub hook: String,
 }
 
 #[derive(Debug, Args)]
@@ -272,6 +288,7 @@ pub fn dispatch(cli: Cli, ctx: &mut Ctx<'_>) -> Result<()> {
         Command::Hook(HookCommand::PostCommit) => commands::hook::post_commit(ctx),
         Command::Hook(HookCommand::PostMerge) => commands::hook::post_merge(ctx),
         Command::Hook(HookCommand::PostRewrite) => commands::hook::post_rewrite(ctx),
+        Command::Hook(HookCommand::Auto(args)) => commands::hook::auto(ctx, &args.hook),
         Command::Status(args) => commands::status::run(ctx, args.json),
         Command::Doctor(args) => commands::doctor::run(ctx, args.fix),
         Command::Open(args) => commands::open::run(ctx, args.print),
@@ -372,6 +389,14 @@ mod tests {
         assert!(matches!(
             parse(&["hook", "post-rewrite"]).unwrap().command,
             Command::Hook(HookCommand::PostRewrite)
+        ));
+        assert!(matches!(
+            parse(&["hook", "auto"]).unwrap().command,
+            Command::Hook(HookCommand::Auto(a)) if a.hook == "post-commit"
+        ));
+        assert!(matches!(
+            parse(&["hook", "auto", "post-merge"]).unwrap().command,
+            Command::Hook(HookCommand::Auto(a)) if a.hook == "post-merge"
         ));
     }
 

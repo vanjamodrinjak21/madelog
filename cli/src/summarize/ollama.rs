@@ -21,6 +21,11 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(1);
 /// Generating a few paragraphs on a laptop CPU is slow. Not unbounded, though.
 const GENERATE_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// What a git hook is allowed to wait. A commit that hangs for a minute on a
+/// summary is a commit the person will learn to dread, so the hook gives the
+/// model three seconds and writes the template if it is not done.
+pub const HOOK_TIMEOUT: Duration = Duration::from_secs(3);
+
 /// A summary longer than this is a model that has stopped summarising.
 pub const MAX_SUMMARY_CHARS: usize = 2000;
 
@@ -93,10 +98,19 @@ impl std::fmt::Debug for Ollama {
 
 impl Ollama {
     pub fn new(host: &str) -> Ollama {
+        Ollama::with_timeouts(host, PROBE_TIMEOUT, GENERATE_TIMEOUT)
+    }
+
+    /// A client that gives up quickly — what the post-commit hook uses.
+    pub fn impatient(host: &str) -> Ollama {
+        Ollama::with_timeouts(host, HOOK_TIMEOUT.min(PROBE_TIMEOUT), HOOK_TIMEOUT)
+    }
+
+    pub fn with_timeouts(host: &str, probe: Duration, work: Duration) -> Ollama {
         Ollama {
             host: normalise_host(host),
-            probe: agent(PROBE_TIMEOUT),
-            work: agent(GENERATE_TIMEOUT),
+            probe: agent(probe),
+            work: agent(work),
         }
     }
 

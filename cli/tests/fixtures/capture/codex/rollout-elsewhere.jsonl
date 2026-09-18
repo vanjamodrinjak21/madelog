@@ -1,0 +1,2 @@
+{"timestamp":"{{TS_ISO}}","ordinal":0,"type":"session_meta","payload":{"id":"019a1f7c-0000-7000-8000-000000000002","session_id":"019a1f7c-0000-7000-8000-000000000002","cwd":"/Users/redacted/other-project","cli_version":"0.154.0"}}
+{"timestamp":"{{TS_ISO}}","ordinal":1,"type":"event_msg","payload":{"type":"item_completed","item":{"type":"UserMessage","content":[{"type":"input_text","text":"not this repository"}]}}}

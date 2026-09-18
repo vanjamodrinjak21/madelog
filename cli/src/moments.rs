@@ -174,7 +174,7 @@ fn fix_after_ai_moments(commits: &[Commit], patterns: &[PatternPayload]) -> Vec<
                 quotable(after.subject(), 60)
             ),
             format!(
-                "Git AI attributed {} lines in {} to the model.",
+                "{} lines in {} were written by the model.",
                 before.ai_lines(),
                 before.short()
             ),
@@ -460,11 +460,7 @@ mod tests {
             "{}",
             found[0].body
         );
-        assert!(
-            found[0].body.contains("attributed 80 lines"),
-            "{}",
-            found[0].body
-        );
+        assert!(found[0].body.contains("80 lines in"), "{}", found[0].body);
         // the AI commit, its session, and the fix
         assert_eq!(found[0].refs.len(), 3);
     }

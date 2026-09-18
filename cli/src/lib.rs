@@ -3,6 +3,7 @@
 //! The binary is a thin shell over this library so that integration tests can
 //! drive commands against a temporary repository without spawning a process.
 
+pub mod capture;
 pub mod chain;
 pub mod cli;
 pub mod commands;
@@ -10,6 +11,7 @@ pub mod config;
 pub mod event;
 pub mod gitai;
 pub mod gitrepo;
+pub mod global;
 pub mod keys;
 pub mod moments;
 pub mod page;

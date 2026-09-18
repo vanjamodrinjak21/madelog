@@ -156,3 +156,30 @@ fn doctor_warns_rather_than_fails_when_the_server_is_not_answering() {
         "an offline machine is not a broken one: {out}"
     );
 }
+
+#[test]
+fn doctor_reports_on_every_ai_tool_and_on_the_recording_itself() {
+    let _lock = capture_lock();
+    let repo = init_repo();
+    init_madelog(&repo);
+    let _home = fake_claude(&repo, chrono::Utc::now());
+
+    let out = madelog::run_capture(repo.root(), &["doctor"]).unwrap_or_else(|e| format!("{e:#}"));
+
+    for tool in ["claude-code", "codex", "cursor", "copilot"] {
+        assert!(
+            out.lines().any(|l| l.contains(tool)),
+            "no line for {tool}:\n{out}"
+        );
+    }
+    let claude = out.lines().find(|l| l.contains("claude-code")).unwrap();
+    assert!(claude.trim_start().starts_with("ok"), "{claude}");
+    assert!(claude.contains("1 session touches this repo"), "{claude}");
+
+    let sessions = out
+        .lines()
+        .find(|l| l.contains("ai sessions"))
+        .unwrap_or_else(|| panic!("no ai sessions line:\n{out}"));
+    assert!(sessions.contains("recording"), "{sessions}");
+    assert!(sessions.trim_start().starts_with("ok"), "{sessions}");
+}

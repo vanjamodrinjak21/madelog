@@ -37,7 +37,7 @@ pub fn hook_marker(name: &str) -> String {
     format!("# madelog-cli:{name}")
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Options {
     pub what: Option<String>,
     pub for_whom: Option<String>,
@@ -45,6 +45,23 @@ pub struct Options {
     pub record_ai_sessions: Option<bool>,
     /// Ask nothing; use what was given and defaults for the rest.
     pub yes: bool,
+    /// Record the commits this repository already had. On by default: a page
+    /// that starts on the day you installed madelog says the project took a
+    /// day, which is the one thing it must not say.
+    pub backfill: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            what: None,
+            for_whom: None,
+            tools: None,
+            record_ai_sessions: None,
+            yes: false,
+            backfill: true,
+        }
+    }
 }
 
 impl Options {
@@ -61,6 +78,7 @@ impl Options {
                 None
             },
             yes: args.yes,
+            backfill: !args.no_backfill,
         }
     }
 }
@@ -76,6 +94,7 @@ pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
         tools,
         record_ai_sessions,
         yes,
+        backfill,
     } = opts;
 
     // What this repository already recorded, if anything. A second `init` is a
@@ -143,7 +162,7 @@ pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
                 record_ai_sessions: match record_ai_sessions {
                     Some(v) => v,
                     None if yes => true,
-                    None => ctx.ask_yes_no("Record AI sessions from Git AI?", true)?,
+                    None => ctx.ask_yes_no("Record the AI sessions behind your commits?", true)?,
                 },
             }
         }
@@ -165,16 +184,40 @@ pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
         ctx.say("  .madelog/log.db         the event log, hash chained")?;
         ctx.say("  .madelog/config.toml    settings, including privacy.redact")?;
         ctx.say("Your commits are recorded from now on. Nothing leaves this machine.")?;
+    }
+
+    if backfill {
+        ctx.blank()?;
+        backfill_history(ctx)?;
+    }
+
+    if previous.is_none() {
         ctx.blank()?;
         ctx.say("Next: `madelog note \"why you did it that way\"` after a decision.")?;
     }
-    if intent.record_ai_sessions && which("git-ai").is_none() {
-        ctx.say(&format!(
-            "Git AI is not on your PATH, so AI sessions stay empty. Install it with: {}",
-            crate::gitai::GIT_AI_INSTALL
-        ))?;
-    }
     Ok(())
+}
+
+/// Record whatever history this repository already had, without asking.
+///
+/// A failure here is not a failed `init`: madelog is set up either way, and
+/// `madelog backfill` can be run again by hand.
+fn backfill_history(ctx: &mut Ctx<'_>) -> Result<()> {
+    match crate::commands::backfill::run(
+        ctx,
+        crate::commands::backfill::Options {
+            since: None,
+            yes: true,
+        },
+    ) {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            ctx.say(&format!(
+                "could not record the existing history ({err:#}) — run `madelog backfill` later"
+            ))?;
+            Ok(())
+        }
+    }
 }
 
 /// The newest intent this repository recorded, if it has a log at all.
@@ -230,7 +273,7 @@ fn write_intent_md(madelog_dir: &Path, intent: &IntentPayload) -> Result<()> {
          ## AI sessions\n\n{}\n\n\
          Edit this file whenever the answer changes. It is yours; madelog only reads it.\n",
         if record_ai_sessions {
-            "Recorded from Git AI attribution."
+            "Recorded from the local logs of the AI tools on this machine."
         } else {
             "Not recorded."
         }

@@ -1,8 +1,10 @@
 //! Reader for Git AI attribution notes.
 //!
 //! Git AI is installed separately by the user and writes its attribution into
-//! `refs/notes/ai`, one note per commit. madelog never parses editor or tool logs
-//! itself; this module is the only place that knows Git AI's format.
+//! `refs/notes/ai`, one note per commit. madelog does not need it: `capture`
+//! reads the AI tools' own logs. This module stays as an extra source for the
+//! people who happen to run Git AI, and it is silent — nothing in madelog ever
+//! mentions it, asks for it or complains about its absence.
 //!
 //! What a note can and cannot tell us is worked out in
 //! `docs/superpowers/specs/gitai-format.md`. The short version: the
@@ -14,7 +16,7 @@ pub mod note;
 pub mod prompt;
 
 use std::path::Path;
-use std::sync::{Once, OnceLock};
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
 use git2::{Oid, Repository};
@@ -41,27 +43,21 @@ pub fn sessions_for_commit(repo: &Repository, sha: &str) -> Result<Vec<AiSession
 
     let note = match repo.find_note(Some(NOTES_REF), oid) {
         Ok(note) => note,
-        // No ref, or no note on this commit. Both are ordinary.
-        Err(e) if e.code() == git2::ErrorCode::NotFound => {
-            warn_git_ai_missing();
-            return Ok(Vec::new());
-        }
+        // No ref, or no note on this commit. Both are ordinary, and both are
+        // silent: madelog reads the AI tools' own logs, so a machine without
+        // Git AI is not a machine that is missing anything.
+        Err(e) if e.code() == git2::ErrorCode::NotFound => return Ok(Vec::new()),
         Err(e) => {
             return Err(anyhow::Error::new(e).context(format!("reading {NOTES_REF} for {sha}")))
         }
     };
 
     let Some(blob) = note.message() else {
-        warn_unreadable("the note is not valid UTF-8");
         return Ok(Vec::new());
     };
 
-    let parsed = match note::parse(blob) {
-        Ok(parsed) => parsed,
-        Err(err) => {
-            warn_unreadable(&format!("{err:#}"));
-            return Ok(Vec::new());
-        }
+    let Ok(parsed) = note::parse(blob) else {
+        return Ok(Vec::new());
     };
 
     Ok(to_sessions(&parsed, repo.workdir()))
@@ -188,32 +184,6 @@ fn redaction_filter(workdir: Option<&Path>) -> ExcerptFilter {
         .ok()
         .and_then(|config| ExcerptFilter::new(&config.privacy.redact).ok())
         .unwrap_or_default()
-}
-
-// ---------------------------------------------------------------------------
-// warnings
-// ---------------------------------------------------------------------------
-
-/// Say once that Git AI is missing — and only when it really is. A commit
-/// with no AI in it has no note either, and that is not worth a word.
-fn warn_git_ai_missing() {
-    static ONCE: Once = Once::new();
-    if git_ai_installed() {
-        return;
-    }
-    ONCE.call_once(|| {
-        eprintln!("madelog: Git AI is not installed, so no AI sessions are recorded.");
-        eprintln!("madelog: install it with: {GIT_AI_INSTALL}");
-    });
-}
-
-fn warn_unreadable(reason: &str) {
-    static ONCE: Once = Once::new();
-    ONCE.call_once(|| {
-        eprintln!(
-            "madelog: a Git AI note could not be read, so its AI sessions are skipped ({reason})"
-        );
-    });
 }
 
 /// How to install Git AI. It ships an installer script rather than a package —

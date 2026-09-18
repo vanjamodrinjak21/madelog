@@ -83,7 +83,7 @@ pub fn run(ctx: &mut Ctx<'_>, fix: bool) -> Result<()> {
     check_hooks(&mut report, &root, &git_dir, fix);
     check_exclude(&mut report, &git_dir, fix);
     check_device_key(&mut report, fix);
-    check_git_ai(&mut report);
+    check_ai_tools(&mut report, &root);
     check_ollama(&mut report, &config);
     check_server(&mut report, &config);
 
@@ -356,18 +356,36 @@ fn restrict(_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn check_git_ai(report: &mut Report) {
-    match crate::gitai::git_ai_path() {
-        Some(path) => report.add(Verdict::Ok, "git-ai", format!("{}", path.display())),
-        None => report.add(
-            Verdict::Warn,
-            "git-ai",
-            format!(
-                "not on PATH or in ~/.git-ai/bin, so AI sessions stay empty — install it with: {}",
-                crate::gitai::GIT_AI_INSTALL
-            ),
-        ),
+/// Which AI tools left a log madelog can read, and whether their sessions are
+/// being recorded here.
+///
+/// None of this is a `fail`: a machine with no AI tool on it is a perfectly
+/// healthy machine, and a page without AI sessions is a page that says so.
+fn check_ai_tools(report: &mut Report, root: &Path) {
+    let tools = crate::capture::report(Some(root));
+    for tool in &tools {
+        let detail = match tool.sessions {
+            Some(n) => format!("{}, {}", tool.note, crate::capture::sessions_phrase(n)),
+            None => tool.note.clone(),
+        };
+        let verdict = if tool.installed {
+            Verdict::Ok
+        } else {
+            Verdict::Warn
+        };
+        report.add(verdict, &tool.name, detail);
     }
+
+    let (recording, why) = crate::commands::hook::ai_session_state(root);
+    report.add(
+        if recording {
+            Verdict::Ok
+        } else {
+            Verdict::Warn
+        },
+        "ai sessions",
+        why,
+    );
 }
 
 fn check_ollama(report: &mut Report, config: &Config) {

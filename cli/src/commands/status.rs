@@ -29,7 +29,11 @@ pub struct Status {
     /// Commits on the first-parent line from HEAD that the log does not have.
     pub unrecorded_commits: u64,
     pub hooks: Vec<Hook>,
-    pub git_ai: Option<String>,
+    /// Every AI tool madelog knows how to read, and what it found here.
+    pub ai_tools: Vec<AiTool>,
+    /// Whether the AI sessions behind your commits are being recorded, and
+    /// why not when they are not.
+    pub ai_sessions: String,
     pub ollama: OllamaStatus,
     pub server_url: String,
     pub published: Option<Publication>,
@@ -58,6 +62,15 @@ pub struct Hook {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct AiTool {
+    pub name: String,
+    pub installed: bool,
+    pub note: String,
+    /// Sessions touching this repository in the last three months.
+    pub sessions: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct OllamaStatus {
     /// `auto | ollama | none`, from `llm.provider`.
     pub provider: String,
@@ -82,6 +95,9 @@ pub struct PageStatus {
     /// `true` when the rendered page is newer than the last publish, so the
     /// link points at something older than what is on disk.
     pub newer_than_publish: bool,
+    /// `true` when the log has moved on since the page was rendered, so the
+    /// file on disk is out of date. `madelog open` re-renders when it is.
+    pub older_than_log: bool,
 }
 
 pub fn run(ctx: &mut Ctx<'_>, json: bool) -> Result<()> {
@@ -143,6 +159,7 @@ pub fn read(cwd: &Path) -> Result<Status> {
 
     let page_path = madelog_dir.join("site").join("index.html");
     let rendered = page_path.exists();
+    let older_than_log = rendered && crate::commands::open::page_is_stale(&root);
     let published_at = config
         .server
         .published_at
@@ -166,13 +183,23 @@ pub fn read(cwd: &Path) -> Result<Status> {
         last_commit,
         unrecorded_commits,
         hooks,
-        git_ai: crate::gitai::git_ai_path().map(|p| p.display().to_string()),
+        ai_tools: crate::capture::report(Some(&root))
+            .into_iter()
+            .map(|r| AiTool {
+                name: r.name,
+                installed: r.installed,
+                note: r.note,
+                sessions: r.sessions,
+            })
+            .collect(),
+        ai_sessions: crate::commands::hook::ai_session_state(&root).1,
         ollama: ollama_status(&config),
         server_url: config.server.url.clone(),
         page: PageStatus {
             newer_than_publish: rendered
                 && published.is_some()
                 && is_newer(&page_path, published_at.as_deref()),
+            older_than_log,
             path: page_path.display().to_string(),
             rendered,
         },
@@ -326,14 +353,20 @@ fn print(ctx: &mut Ctx<'_>, s: &Status) -> Result<()> {
         line(ctx, label, &body)?;
     }
 
-    line(
-        ctx,
-        "git-ai",
-        &match &s.git_ai {
-            Some(path) => format!("found at {path}"),
-            None => "not installed, so AI sessions stay empty".to_string(),
-        },
-    )?;
+    for (i, tool) in s.ai_tools.iter().enumerate() {
+        let label = if i == 0 { "ai tools" } else { "" };
+        let body = match tool.sessions {
+            Some(n) => format!(
+                "{:<12} {}, {}",
+                tool.name,
+                tool.note,
+                crate::capture::sessions_phrase(n)
+            ),
+            None => format!("{:<12} {}", tool.name, tool.note),
+        };
+        line(ctx, label, &body)?;
+    }
+    line(ctx, "ai sessions", &s.ai_sessions)?;
 
     let ollama = &s.ollama;
     let body = if ollama.provider == "none" {
@@ -383,6 +416,13 @@ fn print(ctx: &mut Ctx<'_>, s: &Status) -> Result<()> {
             format!("{} (not rendered yet)", s.page.path)
         },
     )?;
+    if s.page.older_than_log {
+        line(
+            ctx,
+            "",
+            "page older than log — `madelog open` renders it again",
+        )?;
+    }
     Ok(())
 }
 

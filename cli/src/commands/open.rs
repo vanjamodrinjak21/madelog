@@ -1,9 +1,10 @@
 //! `madelog open` — the page, in the browser you already use.
 //!
 //! No server, no localhost, no port: the page is one self-contained file, so
-//! the browser opens it off the disk. If it has not been rendered yet, it is
-//! rendered first — asking someone to run `madelog publish --local` before
-//! `madelog open` would be a riddle, not a workflow.
+//! the browser opens it off the disk. If it has not been rendered yet, or if
+//! the log has moved on since it was, it is rendered first — asking someone to
+//! run `madelog publish --local` before `madelog open` would be a riddle, not
+//! a workflow.
 
 use std::path::Path;
 use std::process::Command;
@@ -27,11 +28,11 @@ pub fn run(ctx: &mut Ctx<'_>, print_only: bool) -> Result<()> {
     }
 
     let path = root.join(".madelog").join("site").join("index.html");
-    let path = if path.exists() {
+    let path = if path.exists() && !page_is_stale(&root) {
         path
     } else {
-        // Nothing rendered yet, so render it. Locally only: `madelog open`
-        // never puts anything online.
+        // Nothing rendered yet, or rendered before the last few commits.
+        // Locally only: `madelog open` never puts anything online.
         crate::page::render_local(&root, None)?
     };
 
@@ -59,6 +60,31 @@ pub fn run(ctx: &mut Ctx<'_>, print_only: bool) -> Result<()> {
 
     ctx.say(&format!("opened {}", path.display()))?;
     Ok(())
+}
+
+/// Has the log moved on since the page was rendered?
+///
+/// The comparison is the newest event's timestamp against the file's mtime.
+/// Both are wall-clock times on this machine, which is exactly the question
+/// being asked: was anything recorded after this file was written? A page
+/// that is not there yet is not stale, it is missing, and the caller can tell
+/// the difference.
+pub fn page_is_stale(root: &Path) -> bool {
+    let madelog_dir = root.join(".madelog");
+    let page = madelog_dir.join("site").join("index.html");
+    let Ok(rendered_at) = std::fs::metadata(&page).and_then(|m| m.modified()) else {
+        return false;
+    };
+    let Ok(store) = crate::store::Store::open(&madelog_dir.join("log.db")) else {
+        return false;
+    };
+    let Ok(Some(last)) = store.last() else {
+        return false;
+    };
+    let Ok(recorded_at) = chrono::DateTime::parse_from_rfc3339(&last.ts) else {
+        return false;
+    };
+    recorded_at.with_timezone(&chrono::Utc) > chrono::DateTime::<chrono::Utc>::from(rendered_at)
 }
 
 /// The command that opens a file in the desktop's default application.

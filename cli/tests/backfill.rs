@@ -34,7 +34,7 @@ fn repo_with_history() -> (TestRepo, Vec<String>) {
 #[test]
 fn backfill_records_existing_history_oldest_first_with_real_commit_times() {
     let (repo, shas) = repo_with_history();
-    init_madelog(&repo);
+    init_madelog_without_backfill(&repo);
 
     let out = madelog::run_capture(repo.root(), &["backfill", "--yes"]).unwrap();
 
@@ -83,7 +83,7 @@ fn backfill_records_existing_history_oldest_first_with_real_commit_times() {
 #[test]
 fn backfilled_commits_carry_no_gap_signal() {
     let (repo, _) = repo_with_history();
-    init_madelog(&repo);
+    init_madelog_without_backfill(&repo);
     madelog::run_capture(repo.root(), &["backfill", "--yes"]).unwrap();
 
     for commit in commit_payloads(&repo) {
@@ -97,7 +97,7 @@ fn backfilled_commits_carry_no_gap_signal() {
 #[test]
 fn backfill_skips_commits_the_hook_already_recorded() {
     let (repo, shas) = repo_with_history();
-    init_madelog(&repo);
+    init_madelog_without_backfill(&repo);
     // The hook picks up HEAD, as it would after `madelog init` and a commit.
     madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
     assert_eq!(commit_payloads(&repo).len(), 1);
@@ -116,7 +116,7 @@ fn backfill_skips_commits_the_hook_already_recorded() {
 #[test]
 fn backfill_twice_changes_nothing_the_second_time() {
     let (repo, _) = repo_with_history();
-    init_madelog(&repo);
+    init_madelog_without_backfill(&repo);
     madelog::run_capture(repo.root(), &["backfill", "--yes"]).unwrap();
     let before = events(&repo).len();
 
@@ -129,7 +129,7 @@ fn backfill_twice_changes_nothing_the_second_time() {
 #[test]
 fn backfill_since_a_sha_starts_at_that_commit() {
     let (repo, shas) = repo_with_history();
-    init_madelog(&repo);
+    init_madelog_without_backfill(&repo);
 
     madelog::run_capture(
         repo.root(),
@@ -148,7 +148,7 @@ fn backfill_since_a_date_starts_at_that_day() {
     let old = repo.commit_all_at("feat: january", 1_767_258_000); // 2026-01-01
     repo.write("new.rs", "// new\n");
     let new = repo.commit_all_at("feat: march", MARCH);
-    init_madelog(&repo);
+    init_madelog_without_backfill(&repo);
 
     madelog::run_capture(repo.root(), &["backfill", "--since", "2026-02-01", "--yes"]).unwrap();
 
@@ -164,7 +164,7 @@ fn backfill_since_a_date_starts_at_that_day() {
 #[test]
 fn backfill_since_nonsense_is_refused() {
     let (repo, _) = repo_with_history();
-    init_madelog(&repo);
+    init_madelog_without_backfill(&repo);
     let err =
         madelog::run_in(repo.root(), &["backfill", "--since", "yesterday", "--yes"]).unwrap_err();
     assert!(format!("{err:#}").contains("2026-01-31"), "{err:#}");
@@ -182,7 +182,7 @@ fn backfill_refuses_without_a_madelog_directory() {
 #[test]
 fn backfill_without_yes_asks_first_and_an_empty_answer_means_yes() {
     let (repo, _) = repo_with_history();
-    init_madelog(&repo);
+    init_madelog_without_backfill(&repo);
 
     let mut out: Vec<u8> = Vec::new();
     madelog::run_in_with(repo.root(), &["backfill"], std::io::empty(), &mut out).unwrap();
@@ -195,7 +195,7 @@ fn backfill_without_yes_asks_first_and_an_empty_answer_means_yes() {
 #[test]
 fn backfill_without_yes_stops_when_the_answer_is_no() {
     let (repo, _) = repo_with_history();
-    init_madelog(&repo);
+    init_madelog_without_backfill(&repo);
 
     let mut out: Vec<u8> = Vec::new();
     madelog::run_in_with(repo.root(), &["backfill"], &b"n\n"[..], &mut out).unwrap();
@@ -208,7 +208,7 @@ fn backfill_without_yes_stops_when_the_answer_is_no() {
 #[test]
 fn backfill_in_a_repository_without_commits_says_so() {
     let repo = init_repo();
-    init_madelog(&repo);
+    init_madelog_without_backfill(&repo);
     let out = madelog::run_capture(repo.root(), &["backfill", "--yes"]).unwrap();
     assert!(out.contains("no commits"), "{out}");
 }
@@ -221,7 +221,7 @@ fn a_backfilled_page_counts_the_days_the_work_took() {
         repo.write(&format!("f{i}.rs"), "// x\n");
         repo.commit_all_at(message, MARCH + 86_400 * i as i64);
     }
-    init_madelog(&repo);
+    init_madelog_without_backfill(&repo);
     madelog::run_capture(repo.root(), &["backfill", "--yes"]).unwrap();
 
     let ctx = madelog::page::build_context(repo.root(), None).unwrap();

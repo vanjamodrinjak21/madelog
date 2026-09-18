@@ -19,4 +19,5 @@ pub mod analyze;
 pub mod ask;
 pub mod model;
 pub mod publish;
+pub mod refresh;
 pub mod summarize;

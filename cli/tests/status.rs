@@ -45,7 +45,7 @@ fn status_counts_commits_git_has_that_the_log_does_not() {
         repo.write(&format!("f{i}.rs"), "// x\n");
         repo.commit_all_at(m, MARCH + 3600 * i as i64);
     }
-    init_madelog(&repo);
+    init_madelog_without_backfill(&repo);
 
     let out = madelog::run_capture(repo.root(), &["status"]).unwrap();
     assert!(out.contains("3 commits in git are not recorded"), "{out}");
@@ -197,4 +197,63 @@ fn status_in_a_repository_without_madelog_says_so_rather_than_failing() {
     let out = madelog::run_capture(repo.root(), &["status"]).unwrap();
     assert!(out.contains("nothing recorded yet"), "{out}");
     assert!(out.contains("madelog init"), "{out}");
+}
+
+#[test]
+fn status_lists_every_ai_tool_and_whether_sessions_are_recorded() {
+    let _lock = capture_lock();
+    let repo = init_repo();
+    init_madelog(&repo);
+    let _home = fake_claude(&repo, chrono::Utc::now());
+
+    let out = madelog::run_capture(repo.root(), &["status"]).unwrap();
+
+    assert!(out.contains("ai tools"), "{out}");
+    for tool in ["claude-code", "codex", "cursor", "copilot"] {
+        assert!(out.contains(tool), "no line for {tool}:\n{out}");
+    }
+    assert!(out.contains("1 session touches this repo"), "{out}");
+    assert!(
+        out.lines()
+            .any(|l| l.starts_with("ai sessions") && l.contains("recording")),
+        "{out}"
+    );
+
+    let json = status_json(&repo);
+    let tools = json["ai_tools"].as_array().unwrap();
+    assert_eq!(tools.len(), 4);
+    let claude = tools
+        .iter()
+        .find(|t| t["name"] == "claude-code")
+        .expect("claude-code in the json");
+    assert_eq!(claude["installed"], true);
+    assert_eq!(claude["sessions"], 1);
+    assert!(json["ai_sessions"].as_str().unwrap().contains("recording"));
+}
+
+#[test]
+fn status_says_why_ai_sessions_are_not_being_recorded() {
+    let _lock = capture_lock();
+    let repo = init_repo();
+    isolate_device_key();
+    isolate_ai_tools();
+    madelog::run_capture(
+        repo.root(),
+        &[
+            "init",
+            "--what",
+            "a thing",
+            "--no-record-ai-sessions",
+            "--yes",
+        ],
+    )
+    .unwrap();
+
+    let out = madelog::run_capture(repo.root(), &["status"]).unwrap();
+    let line = out
+        .lines()
+        .find(|l| l.starts_with("ai sessions"))
+        .unwrap_or_else(|| panic!("no ai sessions line:\n{out}"));
+    assert!(line.contains("not recording"), "{line}");
+    assert!(line.contains("madelog init"), "and why: {line}");
 }

@@ -1,0 +1,4 @@
+{"display":"write a parser for the log lines","pastedContents":{},"timestamp":"{{TS_MS}}","project":"{{REPO}}","sessionId":"aa2b7669-72a3-4ce8-8fbf-62fd9caee4f5"}
+{"display":"now handle the empty line","pastedContents":{},"timestamp":"{{TS_MS}}","project":"{{REPO}}","sessionId":"aa2b7669-72a3-4ce8-8fbf-62fd9caee4f5"}
+{"display":"something else","pastedContents":{},"timestamp":"{{TS_MS}}","project":"/Users/redacted/other-project","sessionId":"cc11de55-0000-4000-8000-000000000000"}
+{ this line is not json

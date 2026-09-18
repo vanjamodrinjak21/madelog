@@ -1,5 +1,9 @@
-//! `madelog analyze` over a real repository: the hook records the commits, the
-//! rules read them back, and running twice records nothing new.
+//! `madelog analyze` over a real repository.
+//!
+//! The hook already runs the same rules after every commit, so in a repository
+//! that has been committed to normally `madelog analyze` mostly confirms what
+//! is already in the log. It still has to record what it finds on its own,
+//! which is what a backfilled history needs, so both paths are tested here.
 
 mod common;
 
@@ -18,8 +22,8 @@ fn analyze_json(repo: &TestRepo) -> String {
     madelog::run_capture(repo.root(), &["analyze", "--json"]).expect("madelog analyze --json")
 }
 
-/// Git AI is task B's job; here we put a session in the log by hand so the
-/// `fix_after_ai` rule has something to see.
+/// A session put in the log by hand, so the `fix_after_ai` rule has something
+/// to see without a fake `~/.claude` behind it.
 fn record_ai_session(repo: &TestRepo, sha: &str, path: &str, ai_lines: u64, reworked: u64) {
     let store = madelog::store::Store::open(&repo.path(".madelog/log.db")).unwrap();
     store
@@ -114,7 +118,10 @@ fn analyze_records_every_pattern_it_finds() {
     assert!(out.contains("fix_after_ai"), "{out}");
     assert!(out.contains("retry"), "{out}");
     assert!(out.contains("revert"), "{out}");
-    assert!(out.contains("recorded 3 new pattern events"), "{out}");
+    assert!(
+        out.contains("nothing new to record"),
+        "the hook recorded them as the commits were made: {out}"
+    );
 
     let recorded = patterns_in(&repo);
     assert_eq!(recorded.len(), 3, "{recorded:?}");
@@ -151,22 +158,44 @@ fn analyze_prints_the_moments_it_would_put_on_the_page() {
 fn analyze_is_idempotent() {
     let repo = busy_repo();
 
+    let before = events(&repo).len();
     let first = analyze(&repo);
     let after_first = events(&repo).len();
     let second = analyze(&repo);
 
+    assert_eq!(before, after_first, "the first run appended events");
     assert_eq!(
         events(&repo).len(),
         after_first,
         "the second run appended events"
     );
-    assert!(first.contains("recorded 3 new pattern events"), "{first}");
+    assert!(first.contains("nothing new to record"), "{first}");
     assert!(second.contains("nothing new to record"), "{second}");
     assert_eq!(patterns_in(&repo).len(), 3);
 
     // And the chain still adds up after analysis appended to it.
     let verified = madelog::run_capture(repo.root(), &["verify"]).unwrap();
     assert!(verified.contains("chain ok"), "{verified}");
+}
+
+#[test]
+fn analyze_records_the_patterns_of_a_history_no_hook_ever_saw() {
+    let repo = init_repo();
+    // A repository that was worked on before madelog arrived: the commits
+    // come in through backfill, which records facts and nothing else.
+    repo.write("src/parse.rs", &lines(40, "parse"));
+    repo.commit_all("feat: the parser");
+    repo.write("src/parse.rs", &lines(41, "parse"));
+    repo.commit_all("Revert \"feat: the parser\"");
+
+    init_madelog_without_backfill(&repo);
+    madelog::run_capture(repo.root(), &["backfill", "--yes"]).unwrap();
+    assert!(patterns_in(&repo).is_empty(), "backfill records facts only");
+
+    let out = analyze(&repo);
+    assert!(out.contains("recorded"), "{out}");
+    assert!(!patterns_in(&repo).is_empty());
+    assert!(analyze(&repo).contains("nothing new to record"));
 }
 
 #[test]

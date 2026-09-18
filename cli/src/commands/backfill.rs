@@ -131,7 +131,10 @@ pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
         ))?;
     }
     if recorder.records_ai_sessions() {
-        ctx.say("  Git AI notes were read for every one of them")?;
+        ctx.say(
+            "  no AI sessions were attached: the logs of a session that ran months ago are \
+             long gone, and guessing at one would be worse than leaving it out",
+        )?;
     }
     ctx.blank()?;
     ctx.say(

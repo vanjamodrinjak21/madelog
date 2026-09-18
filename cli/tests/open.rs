@@ -16,6 +16,9 @@ fn repo_with_a_commit() -> TestRepo {
 #[test]
 fn open_print_renders_the_page_and_prints_where_it_is() {
     let repo = repo_with_a_commit();
+    // The hook renders the page as it records; take it away again so this
+    // test is about `madelog open` and nothing else.
+    std::fs::remove_file(repo.path(".madelog/site/index.html")).unwrap();
     assert!(!repo.path(".madelog/site/index.html").exists());
 
     let out = madelog::run_capture(repo.root(), &["open", "--print"]).unwrap();
@@ -85,4 +88,30 @@ fn open_requires_madelog_init() {
     isolate_device_key();
     let err = madelog::run_in(repo.root(), &["open", "--print"]).unwrap_err();
     assert!(format!("{err:#}").contains("madelog init"), "{err:#}");
+}
+
+#[test]
+fn open_renders_the_page_again_when_the_log_has_moved_on() {
+    let repo = repo_with_a_commit();
+    let path = repo.path(".madelog/site/index.html");
+    std::fs::write(&path, "<!doctype html><html>stale</html>").unwrap();
+
+    // A note is an event, and it lands after the page was written.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    madelog::run_capture(repo.root(), &["note", "chose sqlite over postgres"]).unwrap();
+
+    let status = madelog::run_capture(repo.root(), &["status"]).unwrap();
+    assert!(status.contains("page older than log"), "{status}");
+
+    madelog::run_capture(repo.root(), &["open", "--print"]).unwrap();
+    let html = std::fs::read_to_string(&path).unwrap();
+    assert!(!html.contains("stale"), "the page was rendered again");
+    assert!(
+        html.contains("chose sqlite over postgres"),
+        "and it knows about the note"
+    );
+
+    // Now the page is newer than the log again.
+    let status = madelog::run_capture(repo.root(), &["status"]).unwrap();
+    assert!(!status.contains("page older than log"), "{status}");
 }

@@ -43,10 +43,13 @@ jobs:
         shell: bash
         run: echo "MADELOG_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-      # git2 links against OpenSSL on Linux; the Apple and Windows builds use the system stacks.
+      # The release binaries build OpenSSL from source (`vendored-openssl`) so that one
+      # Linux archive runs everywhere rather than only on the distro that built it.
+      # perl and make are what openssl-src needs; the Apple and Windows builds use the
+      # system stacks and the feature is a no-op there.
       - name: Install build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y pkg-config libssl-dev
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y pkg-config libssl-dev make perl
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -61,7 +64,7 @@ jobs:
 
       - name: Build
         working-directory: cli
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: cargo build --release --locked --features vendored-openssl --target ${{ matrix.target }}
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
