@@ -197,6 +197,11 @@ pub struct LogArgs {
 pub struct ExportArgs {
     /// Where to write the JSON. Prints to stdout when omitted.
     pub path: Option<String>,
+    /// Export the report the page shows (headline, status, numbers,
+    /// highlights, attribution, moments) instead of the raw log. Stamped with
+    /// the export time.
+    #[arg(long)]
+    pub report: bool,
 }
 
 #[derive(Debug, Args)]
@@ -321,7 +326,7 @@ pub fn dispatch(cli: Cli, ctx: &mut Ctx<'_>) -> Result<()> {
         Command::Open(args) => commands::open::run(ctx, args.print),
         Command::Log(args) => commands::log::run(ctx, args.json),
         Command::Verify => commands::verify::run(ctx),
-        Command::Export(args) => commands::export::run(ctx, args.path.as_deref()),
+        Command::Export(args) => commands::export::run(ctx, args.path.as_deref(), args.report),
         Command::Hide(args) => commands::hide::run(ctx, &args.event_id),
         Command::Config(args) => commands::config::run(ctx, args.command),
         Command::Publish(args) => commands::publish::run(

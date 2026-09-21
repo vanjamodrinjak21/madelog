@@ -79,9 +79,25 @@ fn design_mock_context_deserialises_and_renders() {
         "A Rust CLI that records how a project came together and turns it into one page"
     ));
     assert!(html.contains("Students and juniors applying for a first job"));
-    assert!(html.contains("Built over 13 working days between 3 Sep 2026 and 17 Sep 2026"));
     assert!(html.contains("github.com/vanjamodrinjak21/madelog"));
     assert!(html.contains("<span>claude-code</span>"));
+
+    // 1b. the verdict: what a reader gets in six seconds. The AI share leads,
+    // the span sits under the day count, and the three lines are facts the
+    // log supports.
+    assert!(html.contains("<div class=\"lead\"><b>39%</b><span>AI-written lines</span></div>"));
+    assert!(html.contains("<b>45</b><span>commits</span>"));
+    assert!(html.contains("days active · 3 Sep – 17 Sep</span>"));
+    assert!(html.contains("<ul class=\"highlights\">"));
+    assert!(html.contains("<li>Reworked 830 of 2,140 AI-written lines by hand</li>"));
+    assert!(html.contains("<li>Decided: "));
+    assert!(html.contains(
+        "<li>45 commits recorded as they happened, 84 events hash-chained, root confirmed by the server</li>"
+    ));
+    // The header carries the root next to the verified mark.
+    assert!(html.contains("Verified record <code>8a1f5c0e</code>"));
+    // The prose that used to fill the first screen is gone.
+    assert!(!html.contains("nothing was written after the fact"));
 
     // 2. timeline: rendered server-side, no JS needed to read it
     assert!(html.contains("<svg class=\"tl\""));
@@ -147,7 +163,18 @@ fn empty_states_render() {
     assert!(!html.contains("session hidden by the author before publishing"));
     assert!(html.contains("Not yet published"));
     assert!(!html.contains(">Verified record<"));
-    assert!(html.contains("not yet published"));
+    // No delivered link means no Delivered row: the first screen never
+    // opens with a "not yet".
+    assert!(!html.contains("not yet published"));
+    assert!(!html.contains("<dt>Delivered</dt>"));
+    // No attribution means no lead figure, and the highlights start with the
+    // decision instead.
+    assert!(!html.contains("class=\"lead\""));
+    assert!(html.contains("<ul class=\"highlights\">\n      <li>Decided: "));
+    assert!(
+        html.contains("84 events hash-chained</li>"),
+        "unpublished: no server clause"
+    );
 }
 
 #[test]
@@ -259,9 +286,24 @@ fn render_local_writes_a_page_that_keeps_its_secrets() {
     // the public note did
     assert!(html.contains("Every payload struct uses BTreeMap so the hash is stable."));
 
-    // a one-day project says so once, and counts read as English
-    assert!(html.contains("Built over 1 working day on "));
+    // the first screen: a capitalised one-line headline, a one-day span, and
+    // three facts the log supports; counts read as English
+    assert!(html.contains("<h1 id=\"intent-h\">A small cli that records process</h1>"));
+    assert!(html.contains("<b>1</b><span>day active · "));
+    assert!(html.contains("<li>Reworked 12 of 40 AI-written lines by hand</li>"));
+    assert!(html
+        .contains("<li>Decided: Every payload struct uses BTreeMap so the hash is stable.</li>"));
+    assert!(html.contains("<li>4 commits recorded as they happened, "));
     assert!(html.contains("4 commits, 1 decision, 1 AI session on one axis."));
+
+    // status: derived, and a commit just now means active; the paper stamp
+    // carries it too
+    assert!(html.contains(
+        "<span class=\"status status-active\" title=\"Status derived from the log\">active</span>"
+    ));
+    assert!(html.contains("<p class=\"stamp\" aria-hidden=\"true\">"));
+    assert!(html.contains(" · active · record to "));
+    assert!(html.contains(" · unpublished local render · root "));
 
     // hidden session
     assert!(html.contains("tl-pt tl-hidden"));
@@ -306,6 +348,8 @@ fn build_context_matches_the_log() {
     assert_eq!(ctx.stats.decisions, 1, "private decisions are not counted");
     assert_eq!(ctx.stats.ai_sessions, 1);
     assert_eq!(ctx.stats.days_active, 1);
+    assert_eq!(ctx.project.status, "active", "a commit today is active");
+    assert_eq!(ctx.project.status_source, "derived");
 
     // one hidden session, no private decision, no intent/summary/pattern rows
     assert_eq!(ctx.hidden_sessions, 1);

@@ -19,7 +19,12 @@ pub const KEYS: &[&str] = &[
     "project.name",
     "project.delivered_url",
     "project.screenshot",
+    "project.status",
 ];
+
+/// What `project.status` may be set to. Unset means madelog derives one from
+/// the log (see `page::status`).
+pub const STATUSES: &[&str] = &["active", "paused", "delivered", "archived"];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -54,10 +59,9 @@ impl Default for Llm {
     }
 }
 
-/// Where `madelog publish` sends the page. The default is the hosted server as
-/// it is deployed today; `madelog.app` serves the site and the install scripts
-/// and will take this over once it has a custom domain (`docs/deploy.md`).
-pub const DEFAULT_SERVER_URL: &str = "https://madelog-server-production.up.railway.app";
+/// Where `madelog publish` sends the page: the hosted API at `api.madelog.app`.
+/// `madelog.app` itself serves the site and the install scripts (`docs/deploy.md`).
+pub const DEFAULT_SERVER_URL: &str = "https://api.madelog.app";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -105,6 +109,10 @@ pub struct Project {
     pub delivered_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub screenshot: Option<String>,
+    /// One of [`STATUSES`], set by the author. Unset means derived from the
+    /// log: delivered, active or dormant.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
 }
 
 impl Config {
@@ -143,6 +151,7 @@ impl Config {
             "project.name" => self.project.name.clone(),
             "project.delivered_url" => self.project.delivered_url.clone().unwrap_or_default(),
             "project.screenshot" => self.project.screenshot.clone().unwrap_or_default(),
+            "project.status" => self.project.status.clone().unwrap_or_default(),
             other => return Err(unknown_key(other)),
         })
     }
@@ -178,6 +187,16 @@ impl Config {
             "project.name" => self.project.name = value.to_string(),
             "project.delivered_url" => self.project.delivered_url = optional(value),
             "project.screenshot" => self.project.screenshot = optional(value),
+            "project.status" => {
+                let value = value.trim().to_ascii_lowercase();
+                if !value.is_empty() && !STATUSES.contains(&value.as_str()) {
+                    return Err(anyhow!(
+                        "project.status must be one of {} or empty to derive it (got `{value}`)",
+                        STATUSES.join(", ")
+                    ));
+                }
+                self.project.status = optional(&value);
+            }
             other => return Err(unknown_key(other)),
         }
         Ok(())
@@ -300,5 +319,36 @@ mod tests {
         c.set("project.screenshot", "shot.png").unwrap();
         c.set("project.screenshot", "").unwrap();
         assert_eq!(c.project.screenshot, None);
+    }
+
+    #[test]
+    fn project_status_is_one_of_four_words_or_nothing() {
+        let mut c = Config::default();
+        assert_eq!(c.project.status, None, "derived unless you say otherwise");
+        assert_eq!(c.get("project.status").unwrap(), "");
+
+        c.set("project.status", "Paused").unwrap();
+        assert_eq!(c.project.status.as_deref(), Some("paused"));
+        for word in STATUSES {
+            c.set("project.status", word).unwrap();
+        }
+        assert!(c.set("project.status", "done").is_err());
+        assert_eq!(
+            c.project.status.as_deref(),
+            Some("archived"),
+            "a rejected value leaves the old one"
+        );
+
+        c.set("project.status", "").unwrap();
+        assert_eq!(c.project.status, None);
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("config.toml");
+        c.set("project.status", "delivered").unwrap();
+        c.save(&path).unwrap();
+        assert_eq!(
+            Config::load(&path).unwrap().project.status.as_deref(),
+            Some("delivered")
+        );
     }
 }

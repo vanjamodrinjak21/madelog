@@ -77,6 +77,7 @@ pub fn render(ctx: &PageContext) -> Result<String> {
     );
     context.insert("ref_labels", &super::ref_labels(ctx));
     context.insert("ratio_view", &ctx.ratio.map(RatioView::of));
+    context.insert("verdict", &Verdict::of(ctx));
     let html = tera()?.render(NAME, &context)?;
     Ok(html)
 }
@@ -93,10 +94,13 @@ pub struct RatioView {
     pub accepted_pct: u64,
     pub reworked_pct: u64,
     pub human_pct: u64,
+    /// Lines that came out of an AI session, kept or reworked: the one number
+    /// the first screen leads with.
+    pub ai_pct: u64,
 }
 
 impl RatioView {
-    fn of(ratio: super::Ratio) -> RatioView {
+    pub fn of(ratio: super::Ratio) -> RatioView {
         let total = ratio.ai_lines + ratio.human_lines;
         if total == 0 {
             return RatioView {
@@ -104,6 +108,7 @@ impl RatioView {
                 accepted_pct: 0,
                 reworked_pct: 0,
                 human_pct: 0,
+                ai_pct: 0,
             };
         }
         let pct = |n: u64| ((n as f64 * 100.0) / total as f64).round() as u64;
@@ -114,8 +119,217 @@ impl RatioView {
             accepted_pct,
             reworked_pct,
             human_pct: 100 - accepted_pct - reworked_pct,
+            ai_pct: accepted_pct + reworked_pct,
         }
     }
+}
+
+/// The first screen, for a reader who gives the page six seconds: one line
+/// saying what was built, the span of the work, and up to three plain facts
+/// about how it was done. All of it is derived from the context, so a fact
+/// the log does not support cannot appear here.
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+pub struct Verdict {
+    /// The intent, cut down to one headline.
+    pub headline: String,
+    /// True when the headline is a shortened form and the full intent is
+    /// worth printing underneath it.
+    pub headline_is_cut: bool,
+    /// `17 Sep – 21 Sep`, `3 Sep` for a one-day project, empty for an empty log.
+    pub span: String,
+    pub highlights: Vec<String>,
+}
+
+/// A headline longer than this is cut at a word boundary.
+const HEADLINE_MAX: usize = 72;
+/// A quoted decision longer than this is cut at a word boundary.
+const DECISION_MAX: usize = 96;
+
+impl Verdict {
+    pub fn of(ctx: &PageContext) -> Verdict {
+        let headline = headline(&ctx.project.name, &ctx.project.what);
+        // A full stop or a capital is not a cut; only lost words are.
+        let full = ctx.project.what.trim().trim_end_matches(['.', ',']);
+        Verdict {
+            headline_is_cut: !full.is_empty() && !full.eq_ignore_ascii_case(&headline),
+            headline,
+            span: span(
+                ctx.project.first_ts.as_deref(),
+                ctx.project.last_ts.as_deref(),
+            ),
+            highlights: highlights(ctx),
+        }
+    }
+}
+
+/// The intent as a headline: without the project's own name in front, cut
+/// at the first colon or semicolon, capped at [`HEADLINE_MAX`] characters,
+/// and starting with a capital. `How <name> came together` when there is no
+/// intent at all.
+pub fn headline(name: &str, what: &str) -> String {
+    let mut text = what.trim();
+    if text.is_empty() {
+        let name = name.trim();
+        return if name.is_empty() {
+            "How this project came together".to_string()
+        } else {
+            format!("How {name} came together")
+        };
+    }
+
+    // "madelog, a CLI that …" → "a CLI that …"
+    let name = name.trim();
+    if !name.is_empty()
+        && text.len() > name.len()
+        && text.is_char_boundary(name.len())
+        && text[..name.len()].eq_ignore_ascii_case(name)
+    {
+        let rest = &text[name.len()..];
+        for sep in [", ", ": ", " - ", " – ", " — ", " is "] {
+            if let Some(after) = rest.strip_prefix(sep) {
+                text = after.trim_start();
+                break;
+            }
+        }
+    }
+
+    // The first clause is the headline; what follows a colon is the list.
+    for sep in [':', ';'] {
+        if let Some(i) = text.find(sep) {
+            text = text[..i].trim_end();
+        }
+    }
+    for sep in [" — ", " – "] {
+        if let Some(i) = text.find(sep) {
+            text = text[..i].trim_end();
+        }
+    }
+
+    let mut out = cut_words(text, HEADLINE_MAX);
+    if let Some(first) = out.chars().next() {
+        if first.is_lowercase() {
+            let upper: String = first.to_uppercase().collect();
+            out.replace_range(..first.len_utf8(), &upper);
+        }
+    }
+    out.trim_end_matches(['.', ',']).to_string()
+}
+
+/// `text` if it fits in `max` characters, else the longest run of whole
+/// words that does, with an ellipsis.
+fn cut_words(text: &str, max: usize) -> String {
+    let text = text.trim();
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    // Byte offset of the last space inside the first `max` characters.
+    let mut end = 0;
+    for (n, (i, ch)) in text.char_indices().enumerate() {
+        if n >= max {
+            break;
+        }
+        if ch == ' ' {
+            end = i;
+        }
+    }
+    if end == 0 {
+        end = text
+            .char_indices()
+            .nth(max)
+            .map(|(i, _)| i)
+            .unwrap_or(text.len());
+    }
+    format!("{}…", text[..end].trim_end_matches(['.', ',', ';', ':']))
+}
+
+/// `17 Sep – 21 Sep`, or a single day when the work fits in one.
+fn span(first: Option<&str>, last: Option<&str>) -> String {
+    match (first, last) {
+        (Some(a), Some(b)) => {
+            let (a, b) = (day_month(a), day_month(b));
+            if a == b {
+                a
+            } else {
+                format!("{a} – {b}")
+            }
+        }
+        (Some(a), None) | (None, Some(a)) => day_month(a),
+        (None, None) => String::new(),
+    }
+}
+
+/// Up to three one-line facts, in the order a reader wants them: how the AI
+/// share was handled, the last decision written down, and that the record
+/// was kept as it happened.
+fn highlights(ctx: &PageContext) -> Vec<String> {
+    let mut out = Vec::new();
+
+    if let Some(ratio) = ctx.ratio {
+        if ratio.ai_lines > 0 {
+            out.push(if ratio.human_reworked > 0 {
+                format!(
+                    "Reworked {} of {} AI-written lines by hand",
+                    num(ratio.human_reworked),
+                    num(ratio.ai_lines)
+                )
+            } else {
+                format!(
+                    "Kept all {} AI-written lines as they came",
+                    num(ratio.ai_lines)
+                )
+            });
+        }
+    }
+
+    if let Some(decision) = ctx
+        .timeline
+        .iter()
+        .rev()
+        .find(|e| e.kind == "decision")
+        .map(|e| e.title.trim())
+        .filter(|t| !t.is_empty())
+    {
+        out.push(format!("Decided: {}", cut_words(decision, DECISION_MAX)));
+    }
+
+    if ctx.stats.commits > 0 {
+        let mut line = format!(
+            "{} commit{} recorded as {} happened, {} event{} hash-chained",
+            ctx.stats.commits,
+            plural(ctx.stats.commits),
+            if ctx.stats.commits == 1 { "it" } else { "they" },
+            num(ctx.chained_events),
+            plural(ctx.chained_events)
+        );
+        if ctx.badge.published.is_some() {
+            line.push_str(", root confirmed by the server");
+        }
+        out.push(line);
+    }
+
+    out.truncate(3);
+    out
+}
+
+fn plural(n: u64) -> &'static str {
+    if n == 1 {
+        ""
+    } else {
+        "s"
+    }
+}
+
+/// `1310` → `1,310`, the way the `num` filter prints it.
+fn num(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out
 }
 
 /// One day mark under the axis.
@@ -436,6 +650,133 @@ mod tests {
         assert_eq!(view.accepted_pct, 24);
         assert_eq!(view.reworked_pct, 15);
         assert_eq!(view.human_pct, 61);
+        assert_eq!(view.ai_pct, 39, "kept plus reworked is the AI share");
+    }
+
+    #[test]
+    fn the_headline_is_the_first_clause_without_the_name() {
+        assert_eq!(
+            headline(
+                "madelog",
+                "madelog, a CLI that records how a project came together: commits, AI \
+                 sessions and one-sentence decisions, hash chained, rendered as a page"
+            ),
+            "A CLI that records how a project came together"
+        );
+        assert_eq!(
+            headline(
+                "ledger",
+                "Ledger is a bookkeeping tool for freelancers; nothing else."
+            ),
+            "A bookkeeping tool for freelancers"
+        );
+        assert_eq!(
+            headline("x", "a small cli that records process"),
+            "A small cli that records process"
+        );
+        // Long single clause: cut at a word, with an ellipsis.
+        let long = "an internal dashboard that shows every open ticket across all four teams \
+                    and the person responsible for it";
+        let cut = headline("dash", long);
+        assert!(cut.ends_with('…'), "{cut}");
+        assert!(cut.chars().count() <= HEADLINE_MAX + 1, "{cut}");
+        assert!(!cut.contains("responsible"), "{cut}");
+        // No intent at all.
+        assert_eq!(headline("madelog", ""), "How madelog came together");
+        assert_eq!(headline("", "  "), "How this project came together");
+        // A name that is not at the front is left alone.
+        assert_eq!(
+            headline("madelog", "A page about madelog"),
+            "A page about madelog"
+        );
+    }
+
+    #[test]
+    fn the_span_is_two_days_or_one() {
+        assert_eq!(
+            span(Some("2026-09-17T20:00:00Z"), Some("2026-09-21T08:00:00Z")),
+            "17 Sep – 21 Sep"
+        );
+        assert_eq!(
+            span(Some("2026-09-17T08:00:00Z"), Some("2026-09-17T20:00:00Z")),
+            "17 Sep"
+        );
+        assert_eq!(span(None, None), "");
+    }
+
+    #[test]
+    fn highlights_only_say_what_the_log_supports() {
+        use super::super::{Badge, Published, Ratio, Stats, TimelineEntry};
+
+        let mut ctx = PageContext::default();
+        assert!(
+            Verdict::of(&ctx).highlights.is_empty(),
+            "an empty log has nothing to say"
+        );
+
+        ctx.stats = Stats {
+            commits: 40,
+            decisions: 9,
+            ai_sessions: 20,
+            days_active: 2,
+        };
+        ctx.chained_events = 87;
+        ctx.ratio = Some(Ratio {
+            ai_lines: 2140,
+            accepted_unchanged: 1310,
+            human_reworked: 830,
+            human_lines: 3420,
+        });
+        ctx.timeline = vec![
+            TimelineEntry {
+                kind: "decision".into(),
+                title: "Server in Go, not Rust".into(),
+                ..Default::default()
+            },
+            TimelineEntry {
+                kind: "commit".into(),
+                title: "feat: later".into(),
+                ..Default::default()
+            },
+        ];
+        let v = Verdict::of(&ctx);
+        assert_eq!(
+            v.highlights,
+            vec![
+                "Reworked 830 of 2,140 AI-written lines by hand",
+                "Decided: Server in Go, not Rust",
+                "40 commits recorded as they happened, 87 events hash-chained",
+            ]
+        );
+
+        ctx.badge = Badge {
+            published: Some(Published {
+                slug: "s".into(),
+                url: "u".into(),
+                received_at: "2026-09-21T08:00:00Z".into(),
+                verify_url: "v".into(),
+            }),
+            ..Default::default()
+        };
+        ctx.ratio = Some(Ratio {
+            ai_lines: 12,
+            accepted_unchanged: 12,
+            human_reworked: 0,
+            human_lines: 0,
+        });
+        ctx.stats.commits = 1;
+        let v = Verdict::of(&ctx);
+        assert_eq!(v.highlights[0], "Kept all 12 AI-written lines as they came");
+        assert_eq!(
+            v.highlights[2],
+            "1 commit recorded as it happened, 87 events hash-chained, root confirmed by the server"
+        );
+
+        // A very long decision is cut at a word.
+        ctx.timeline[0].title = "Chose ".to_string() + &"word ".repeat(40);
+        let v = Verdict::of(&ctx);
+        assert!(v.highlights[1].ends_with('…'));
+        assert!(v.highlights[1].chars().count() <= "Decided: ".len() + DECISION_MAX + 1);
     }
 
     #[test]

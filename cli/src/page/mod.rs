@@ -12,6 +12,8 @@
 
 mod tmpl;
 
+pub use tmpl::{RatioView, Verdict};
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -50,6 +52,51 @@ pub struct Project {
     /// The timestamp of the first and last event; `None` for an empty log.
     pub first_ts: Option<String>,
     pub last_ts: Option<String>,
+    /// `active | paused | delivered | archived` when the author set one,
+    /// `delivered | active | dormant` when derived from the log. Empty only
+    /// for a context that never went through [`build_context`].
+    pub status: String,
+    /// `set` or `derived`.
+    pub status_source: String,
+}
+
+/// The number of days without a commit after which a project that nobody
+/// marked otherwise reads as dormant.
+pub const DORMANT_AFTER_DAYS: i64 = 14;
+
+/// The project's status and where it came from.
+///
+/// The author's word wins. Failing that, a delivered link means delivered, a
+/// commit inside the last [`DORMANT_AFTER_DAYS`] days means active, and
+/// anything older is dormant. A log with no commits at all is active: the
+/// project has just started.
+pub fn status(config: &Config, events: &[Event]) -> (String, String) {
+    status_at(config, events, Utc::now())
+}
+
+fn status_at(config: &Config, events: &[Event], now: DateTime<Utc>) -> (String, String) {
+    if let Some(set) = config
+        .project
+        .status
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return (set.to_ascii_lowercase(), "set".into());
+    }
+    if non_empty(config.project.delivered_url.as_deref()).is_some() {
+        return ("delivered".into(), "derived".into());
+    }
+    let last_commit = events
+        .iter()
+        .filter(|e| e.kind == EventKind::Commit)
+        .filter_map(|e| parse_ts(&effective_ts(e)))
+        .max();
+    let derived = match last_commit {
+        Some(at) if (now - at).num_days() > DORMANT_AFTER_DAYS => "dormant",
+        _ => "active",
+    };
+    (derived.into(), "derived".into())
 }
 
 /// The size of the record, in the four numbers the page prints.
@@ -243,6 +290,8 @@ fn project(
         config.project.name.trim().to_string()
     };
 
+    let (status, status_source) = status(config, events);
+
     Project {
         name,
         what: intent.as_ref().map(|i| i.what.clone()).unwrap_or_default(),
@@ -255,6 +304,8 @@ fn project(
         screenshot: non_empty(config.project.screenshot.as_deref()),
         first_ts: first_ts.clone(),
         last_ts: last_ts.clone(),
+        status,
+        status_source,
     }
 }
 
@@ -539,5 +590,56 @@ mod tests {
     #[test]
     fn a_ratio_needs_a_session() {
         assert!(ratio(&[]).is_none());
+    }
+
+    fn commit_at(committed_at: &str) -> Event {
+        Event {
+            seq: 1,
+            id: "e1".into(),
+            ts: "2026-01-01T00:00:00Z".into(),
+            kind: EventKind::Commit,
+            commit_sha: Some("abc".into()),
+            payload: serde_json::json!({
+                "sha": "abc", "message": "m", "author": "a", "parents": [],
+                "files": [], "committed_at": committed_at
+            }),
+            prev_hash: String::new(),
+            hash: String::new(),
+        }
+    }
+
+    #[test]
+    fn status_is_the_authors_word_or_derived_from_the_log() {
+        let now = parse_ts("2026-09-21T10:00:00Z").unwrap();
+        let mut config = Config::default();
+
+        // Nothing at all: a project that has just started is active.
+        assert_eq!(
+            status_at(&config, &[], now),
+            ("active".to_string(), "derived".to_string())
+        );
+
+        // A commit inside the window keeps it active; older is dormant. The
+        // commit's own date counts, not the day madelog recorded it.
+        let recent = commit_at("2026-09-10T09:00:00Z");
+        let old = commit_at("2026-08-01T09:00:00Z");
+        assert_eq!(status_at(&config, &[old.clone(), recent], now).0, "active");
+        assert_eq!(status_at(&config, &[old], now).0, "dormant");
+
+        // A delivered link means delivered, however old the last commit.
+        config.project.delivered_url = Some("https://a.test".into());
+        assert_eq!(
+            status_at(&config, &[commit_at("2025-01-01T00:00:00Z")], now),
+            ("delivered".to_string(), "derived".to_string())
+        );
+
+        // The author's word wins over everything.
+        config.project.status = Some("Paused".into());
+        assert_eq!(
+            status_at(&config, &[], now),
+            ("paused".to_string(), "set".to_string())
+        );
+        config.project.status = Some("  ".into());
+        assert_eq!(status_at(&config, &[], now).1, "derived");
     }
 }

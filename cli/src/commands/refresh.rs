@@ -59,7 +59,7 @@ pub fn refresh(
 /// The publication facts the page badge shows, when this repository has a
 /// page online. A local render of a published repository should not quietly
 /// demote itself to "not yet published".
-fn published(config: &Config) -> Option<crate::page::Published> {
+pub fn published(config: &Config) -> Option<crate::page::Published> {
     let slug = config
         .server
         .slug

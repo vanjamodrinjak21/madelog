@@ -168,22 +168,34 @@ section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
 .top{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-4);padding:var(--space-6) 0 0;font-size:var(--text-sm);color:var(--ink-2)}
 .top .mark{font-family:var(--font-display);font-weight:700;color:var(--ink);font-size:var(--text-base);text-decoration:none}
 .top .mark small{font-family:var(--font-text);font-weight:500;color:var(--ink-3);margin-left:var(--space-2)}
-.top .verified{display:inline-flex;align-items:center;gap:var(--space-2);text-decoration:none;color:var(--ink-2)}
+.top .status{display:inline-block;margin-left:var(--space-3);padding:0 var(--space-2);border:1px solid var(--line-strong);border-radius:var(--radius-xs);font-family:var(--font-mono);font-size:var(--text-xs);font-weight:400;line-height:1.7;color:var(--ink-2);vertical-align:1px}
+.top .status-active,.top .status-delivered{border-color:var(--ink);color:var(--ink)}
+.stamp{display:none}
+.top .verified{display:inline-flex;align-items:center;gap:var(--space-2);text-decoration:none;color:var(--ink);font-weight:500}
 .top .verified svg{width:14px;height:14px;color:var(--ink)}
+.top .verified code{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-3);font-weight:400}
 
-/* intent */
-.intent{padding-top:var(--space-12);display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:var(--space-10) var(--space-16);align-items:start}
-.intent h1{max-width:20ch}
-.intent .what{margin-top:var(--space-5);max-width:var(--measure);font-size:var(--text-lg);line-height:1.45}
-.intent .for{margin-top:var(--space-3);max-width:var(--measure);color:var(--ink-2)}
+/* intent: the first screen. A reader gives it six seconds, so the headline
+   is one clause, the numbers are the biggest type on the page, and the
+   three lines under them say how the work was done. */
+.intent{padding-top:var(--space-10);display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:var(--space-8) var(--space-16);align-items:start}
+.intent h1{max-width:26ch}
+.intent .what{margin-top:var(--space-4);max-width:var(--measure);font-size:var(--text-base);line-height:1.5;color:var(--ink-2)}
+.intent .for{margin-top:var(--space-2);max-width:var(--measure);color:var(--ink-3);font-size:var(--text-sm)}
 .delivered{border-top:1px solid var(--line);padding-top:var(--space-4);font-size:var(--text-sm)}
 .delivered dt{color:var(--ink-3);margin-bottom:var(--space-1)}
 .delivered dd{margin:0 0 var(--space-4)}
 .delivered dd:last-child{margin-bottom:0}
 .delivered .tools span{display:inline-block;padding:0 var(--space-2);border:1px solid var(--line);border-radius:var(--radius-xs);font-family:var(--font-mono);font-size:var(--text-xs)}
-.figures{display:grid;grid-template-columns:repeat(4,auto);justify-content:start;gap:var(--space-8);margin-top:var(--space-8);font-variant-numeric:tabular-nums}
-.figures b{display:block;font-family:var(--font-display);font-size:var(--text-xl);font-weight:600;letter-spacing:var(--tracking-display);line-height:1}
-.figures span{font-size:var(--text-sm);color:var(--ink-2)}
+.verdict{padding-top:var(--space-8)}
+.figures{display:grid;grid-template-columns:repeat(5,auto);justify-content:start;align-items:end;gap:var(--space-6) var(--space-10);font-variant-numeric:tabular-nums}
+.figures b{display:block;font-family:var(--font-display);font-size:var(--text-2xl);font-weight:600;letter-spacing:var(--tracking-display);line-height:1}
+.figures span{display:block;margin-top:var(--space-2);font-size:var(--text-sm);color:var(--ink-2)}
+.figures .lead b{font-size:var(--text-3xl);font-weight:700}
+.figures .lead span{color:var(--ink)}
+.highlights{list-style:none;margin:var(--space-8) 0 0;padding:0;display:grid;gap:var(--space-2);max-width:var(--measure)}
+.highlights li{position:relative;padding-left:var(--space-5);font-size:var(--text-base);line-height:1.5}
+.highlights li::before{content:"";position:absolute;left:0;top:0.72em;width:var(--space-2);height:2px;background:var(--ink)}
 
 /* timeline */
 .tl-wrap{overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:var(--space-4) 0}
@@ -306,6 +318,7 @@ section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
   .rec-title{grid-column:1 / -1}
   .rec-body{padding-left:0}
   .figures{grid-template-columns:repeat(2,auto);gap:var(--space-5) var(--space-10)}
+  .figures .lead{grid-column:1 / -1}
 }
 @media (max-width: 420px){
   section{padding-top:var(--space-12)}
@@ -324,12 +337,20 @@ section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
   h1{font-size:18pt}h2{font-size:12pt;margin-bottom:6pt}h3{font-size:10.5pt}
   .top{padding-top:0}
   .intent{grid-template-columns:3fr 2fr;gap:12pt 24pt;padding-top:8pt}
-  .intent .what{font-size:10.5pt;margin-top:6pt}
-  .figures{margin-top:10pt}
-  .figures b{font-size:13pt}
+  .intent .what{font-size:9.5pt;margin-top:4pt}
+  .verdict{padding-top:8pt}
+  .figures{gap:8pt 18pt}
+  .figures b{font-size:15pt}
+  .figures .lead b{font-size:20pt}
+  .figures span{margin-top:2pt;font-size:8.5pt}
+  .highlights{margin-top:8pt;gap:2pt}
+  .highlights li{font-size:9.5pt;line-height:1.4}
+  .highlights li::before{print-color-adjust:exact;-webkit-print-color-adjust:exact}
   .tl-wrap{overflow:visible;border:0;padding:0}
   .tl{min-width:0}
   .legend,.hint,.weeks,.records,.moment-refs,.actions,.top .verified{display:none !important}
+  .top .status{border-color:#111;color:#111;font-size:7.5pt;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  .stamp{display:block;margin-top:10pt;padding-top:4pt;border-top:1px solid #999;font-family:var(--font-mono);font-size:7pt;color:#444}
   .moments{grid-template-columns:1fr 1fr;gap:8pt 18pt}
   .moment p{font-size:9pt;line-height:1.4;margin-top:3pt}
   .ratio-bar{height:12pt;margin:8pt 0 4pt;print-color-adjust:exact;-webkit-print-color-adjust:exact}
@@ -356,33 +377,27 @@ section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
 <main class="page">
 
   <header class="top">
-    <a class="mark" href="#top">{{ project.name }}{% if from_day and to_day %}<small>{% if one_day %}{{ from_day }}{% else %}{{ from_day }} – {{ to_day }}{% endif %}</small>{% endif %}</a>
+    <a class="mark" href="#top">{{ project.name }}{% if from_day and to_day %}<small>{% if one_day %}{{ from_day }}{% else %}{{ from_day }} – {{ to_day }}{% endif %}</small>{% endif %}{% if project.status %}<span class="status status-{{ project.status }}" title="{% if project.status_source == "set" %}Status set by the author{% else %}Status derived from the log{% endif %}">{{ project.status }}</span>{% endif %}</a>
 {%- if badge.published %}
-    <a class="verified" href="#badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 4.5 5.8v5.4c0 4.6 3.2 8.8 7.5 10.3 4.3-1.5 7.5-5.7 7.5-10.3V5.8L12 2.5Z"/><path d="m8.8 12.2 2.2 2.2 4.4-4.6"/></svg>Verified record</a>
+    <a class="verified" href="#badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 4.5 5.8v5.4c0 4.6 3.2 8.8 7.5 10.3 4.3-1.5 7.5-5.7 7.5-10.3V5.8L12 2.5Z"/><path d="m8.8 12.2 2.2 2.2 4.4-4.6"/></svg>Verified record <code>{{ badge.root | cut(len=8) }}</code></a>
 {%- endif %}
   </header>
 
   <!-- 1. intent + delivered -->
   <section class="intent" id="top" aria-labelledby="intent-h">
     <div>
-      <h1 id="intent-h">{% if project.what %}{{ project.what }}{% else %}How {{ project.name }} came together{% endif %}</h1>
-{%- if project.for_whom %}
-      <p class="what">{{ project.for_whom }}</p>
+      <h1 id="intent-h">{{ verdict.headline }}</h1>
+{%- if verdict.headline_is_cut %}
+      <p class="what">{{ project.what }}</p>
 {%- endif %}
-      <p class="for">{% if stats.days_active and from_day and to_day %}Built over {{ stats.days_active }} working day{{ stats.days_active | pluralize }} {% if one_day %}on {{ from_day }}{% else %}between {{ from_day }} and {{ to_day }}{% endif %}. {% endif %}Every commit, decision and AI session below was recorded as it happened; nothing was written after the fact.</p>
-      <div class="figures" aria-label="record size">
-        <div><b>{{ stats.commits }}</b><span>commit{{ stats.commits | pluralize }}</span></div>
-        <div><b>{{ stats.decisions }}</b><span>decision{{ stats.decisions | pluralize }}</span></div>
-        <div><b>{{ stats.ai_sessions }}</b><span>AI session{{ stats.ai_sessions | pluralize }}</span></div>
-        <div><b>{{ stats.days_active }}</b><span>day{{ stats.days_active | pluralize }} active</span></div>
-      </div>
+{%- if project.for_whom %}
+      <p class="for">{{ project.for_whom }}</p>
+{%- endif %}
     </div>
     <dl class="delivered">
-      <dt>Delivered</dt>
 {%- if project.delivered_url %}
+      <dt>Delivered</dt>
       <dd><a href="{{ project.delivered_url }}">{{ project.delivered_url | linkname }}</a></dd>
-{%- else %}
-      <dd class="muted">not yet published</dd>
 {%- endif %}
       <dt>Built with</dt>
 {%- if project.tools %}
@@ -397,6 +412,26 @@ section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
       <dt>Record</dt>
       <dd>Hash-chained log of {{ chained_events }} event{{ chained_events | pluralize }}{% if badge.published %}, root confirmed by the server on {{ badge.published.received_at | day }}{% else %}, rendered on this machine{% endif %}. <a href="#badge">Badge</a></dd>
     </dl>
+  </section>
+
+  <!-- 1b. the verdict: five numbers and three lines, readable in six seconds -->
+  <section class="verdict" aria-label="at a glance">
+    <div class="figures">
+{%- if ratio_view and ratio_view.total > 0 %}
+      <div class="lead"><b>{{ ratio_view.ai_pct }}%</b><span>AI-written lines</span></div>
+{%- endif %}
+      <div><b>{{ stats.commits }}</b><span>commit{{ stats.commits | pluralize }}</span></div>
+      <div><b>{{ stats.days_active }}</b><span>day{{ stats.days_active | pluralize }} active{% if verdict.span %} · {{ verdict.span }}{% endif %}</span></div>
+      <div><b>{{ stats.decisions }}</b><span>decision{{ stats.decisions | pluralize }}</span></div>
+      <div><b>{{ stats.ai_sessions }}</b><span>AI session{{ stats.ai_sessions | pluralize }}</span></div>
+    </div>
+{%- if verdict.highlights %}
+    <ul class="highlights">
+{%- for line in verdict.highlights %}
+      <li>{{ line }}</li>
+{%- endfor %}
+    </ul>
+{%- endif %}
   </section>
 
   <!-- 2. timeline -->
@@ -524,6 +559,9 @@ section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
       <span>Raw prompts and full diffs never left the author's machine.</span>
     </p>
   </section>
+
+  <!-- paper only: the stamp a printed or exported copy carries -->
+  <p class="stamp" aria-hidden="true">{{ project.name }}{% if project.status %} · {{ project.status }}{% endif %}{% if badge.last_ts %} · record to {{ badge.last_ts | stamp }}{% endif %}{% if badge.published %} · published {{ badge.published.received_at | stamp }} · {{ badge.published.url | linkname }}{% else %} · unpublished local render{% endif %} · root {{ badge.root | cut(len=12) }}</p>
 
 </main>
 <script>
