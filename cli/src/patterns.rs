@@ -118,6 +118,14 @@ pub fn commits(events: &[Event]) -> Vec<Commit> {
         else {
             continue;
         };
+        // The commit's own date when it carries one. `madelog backfill`
+        // records a month of commits within a second, and "less than a
+        // minute later" must be about the commits, not the recording.
+        let ts = payload
+            .committed_at
+            .as_deref()
+            .and_then(parse_ts)
+            .unwrap_or(ts);
         out.push(Commit {
             event_id: event.id.clone(),
             sha: payload.sha,
@@ -143,6 +151,10 @@ pub fn commits(events: &[Event]) -> Vec<Commit> {
             commit.ai_event_ids.push(event.id.clone());
         }
     }
+    // The rules read "the commit before this one" off the order, so the
+    // order is the order the work happened; a stable sort keeps chain order
+    // for commits that share a second.
+    out.sort_by_key(|c| c.ts);
     out
 }
 
@@ -560,6 +572,35 @@ pub(crate) mod testdata {
             sha
         }
 
+        /// A commit recorded at `secs` that git says was made at
+        /// `committed_secs`: what a backfilled commit looks like.
+        pub fn commit_at(
+            &mut self,
+            secs: i64,
+            committed_secs: i64,
+            prefix: &str,
+            message: &str,
+            files: Vec<CommitFile>,
+        ) -> String {
+            let sha = sha(prefix);
+            let payload = CommitPayload {
+                sha: sha.clone(),
+                message: message.to_string(),
+                author: "Test Person <test@example.com>".to_string(),
+                parents: vec![],
+                files,
+                secs_since_prev: None,
+                committed_at: Some(at(committed_secs)),
+            };
+            self.push(
+                at(secs),
+                EventKind::Commit,
+                Some(sha.clone()),
+                serde_json::to_value(payload).unwrap(),
+            );
+            sha
+        }
+
         /// An AI session anchored to `sha`.
         pub fn ai(&mut self, secs: i64, sha: &str, files: &[(&str, u64, u64)]) -> String {
             let payload = AiSessionPayload {
@@ -845,6 +886,58 @@ mod tests {
     }
 
     // --- fix_after_ai -----------------------------------------------------
+
+    /// Backfilled commits are all recorded within a second; the gap the
+    /// pattern names must be the gap between the commits themselves.
+    #[test]
+    fn backfilled_commits_are_timed_by_their_own_dates() {
+        let mut log = Log::start();
+        let a = log.commit_at(
+            0,
+            -10 * 3600,
+            "aaaa",
+            "feat: parser",
+            vec![file("src/parse.rs", 100, 0)],
+        );
+        log.ai(1, &a, &[("src/parse.rs", 80, 0)]);
+        log.commit_at(
+            2,
+            -7 * 3600,
+            "bbbb",
+            "fix: parser",
+            vec![file("src/parse.rs", 5, 3)],
+        );
+        let found = only(&detect(&log.events), PatternKind::FixAfterAi);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].detail.contains("three hours after"),
+            "{}",
+            found[0].detail
+        );
+        assert!(!found[0].detail.contains("less than a minute"));
+
+        // Recorded oldest-last, but the fix is still the later commit.
+        let mut log = Log::start();
+        log.commit_at(
+            0,
+            -7 * 3600,
+            "bbbb",
+            "fix: parser",
+            vec![file("src/parse.rs", 5, 3)],
+        );
+        let a = log.commit_at(
+            1,
+            -10 * 3600,
+            "aaaa",
+            "feat: parser",
+            vec![file("src/parse.rs", 100, 0)],
+        );
+        log.ai(2, &a, &[("src/parse.rs", 80, 0)]);
+        let found = only(&detect(&log.events), PatternKind::FixAfterAi);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].commits[0], sha("aaaa"));
+        assert_eq!(found[0].commits[1], sha("bbbb"));
+    }
 
     #[test]
     fn a_fix_after_an_ai_commit_is_a_pattern() {

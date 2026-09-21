@@ -127,14 +127,22 @@ pub struct TimelineEntry {
     pub x: f64,
 }
 
-/// How many lines the AI proposed and how many of them survived.
+/// How many lines the AI proposed and how many of them survived, counted
+/// only over the commits that carry a recorded AI session. A commit with no
+/// session is not attributed either way: nothing recorded says whether a
+/// model was involved, so the page does not guess.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct Ratio {
     pub ai_lines: u64,
     pub accepted_unchanged: u64,
     pub human_reworked: u64,
+    /// Lines added by the covered commits that no session proposed.
     pub human_lines: u64,
+    /// Commits with at least one recorded session.
+    pub covered_commits: u64,
+    /// Commits with none, whose lines are left out of every figure above.
+    pub uncovered_commits: u64,
 }
 
 /// The verification badge at the foot of the page.
@@ -163,6 +171,11 @@ pub struct PageContext {
     /// timeline shows fewer: intents, patterns, summaries, hides and private
     /// decisions are chained but not drawn.
     pub chained_events: u64,
+    /// Commits the chain recorded that git's history no longer contains,
+    /// because a rebase, an amend or a purge rewrote them away. They stay in
+    /// the chain and are counted in `chained_events`; nothing else on the
+    /// page counts them.
+    pub rewritten_commits: u64,
     pub badge: Badge,
 }
 
@@ -171,11 +184,16 @@ pub fn build_context(root: &Path, published: Option<Published>) -> Result<PageCo
     let madelog_dir = root.join(".madelog");
     let store = Store::open(&madelog_dir.join("log.db"))?;
     let chain_root = store.root()?;
-    let events = store.all()?;
+    let all_events = store.all()?;
     let config = Config::load(&madelog_dir.join("config.toml"))?;
 
-    let first_ts = events.first().map(|e| e.ts.clone());
-    let last_ts = events.last().map(|e| e.ts.clone());
+    // The badge and the event count are about the chain, so they see every
+    // event. Everything else is about the work, so commits that git no
+    // longer has are set aside first.
+    let first_ts = all_events.first().map(|e| e.ts.clone());
+    let last_ts = all_events.last().map(|e| e.ts.clone());
+    let chained_events = all_events.len() as u64;
+    let (events, rewritten_commits) = without_rewritten(all_events, root);
 
     // The badge is about the chain, so it keeps `ts`: it certifies when
     // madelog recorded things. Everything the reader is told about the work
@@ -200,7 +218,8 @@ pub fn build_context(root: &Path, published: Option<Published>) -> Result<PageCo
         ratio: ratio(&events),
         summaries: crate::summarize::latest_summaries(&events),
         hidden_sessions,
-        chained_events: events.len() as u64,
+        chained_events,
+        rewritten_commits,
         badge: Badge {
             root: chain_root,
             first_ts,
@@ -208,6 +227,57 @@ pub fn build_context(root: &Path, published: Option<Published>) -> Result<PageCo
             published,
         },
     })
+}
+
+/// The events minus the commits that git's history no longer contains, and
+/// the sessions anchored to them; plus how many commits that was.
+///
+/// Only a commit git still holds but no longer reaches from HEAD counts as
+/// rewritten: that is the one case git can vouch for. A sha git does not
+/// have at all is kept, because "pruned by `git gc`" and "recorded on another
+/// machine" look the same from here, and setting work aside on a guess is
+/// the one thing this page must never do. Outside a git repository nothing
+/// is set aside either.
+pub fn without_rewritten(events: Vec<Event>, root: &Path) -> (Vec<Event>, u64) {
+    let Ok(repo) = crate::gitrepo::Repo::discover(root) else {
+        return (events, 0);
+    };
+    let mut gone: BTreeSet<String> = BTreeSet::new();
+    for event in &events {
+        if event.kind != EventKind::Commit {
+            continue;
+        }
+        let Ok(payload) = event.payload_as::<CommitPayload>() else {
+            continue;
+        };
+        if !repo.has_commit(&payload.sha) {
+            continue;
+        }
+        if let Ok(false) = repo.reachable_from_head(&payload.sha) {
+            gone.insert(payload.sha);
+        }
+    }
+    if gone.is_empty() {
+        return (events, 0);
+    }
+    let kept = events
+        .into_iter()
+        .filter(|e| match e.kind {
+            EventKind::Commit => e
+                .payload
+                .get("sha")
+                .and_then(|v| v.as_str())
+                .map(|sha| !gone.contains(sha))
+                .unwrap_or(true),
+            EventKind::AiSession => e
+                .commit_sha
+                .as_deref()
+                .map(|sha| !gone.contains(sha))
+                .unwrap_or(true),
+            _ => true,
+        })
+        .collect();
+    (kept, gone.len() as u64)
 }
 
 /// When a commit event says the work happened: `committed_at` if it has one,
@@ -489,38 +559,56 @@ fn ratio(events: &[Event]) -> Option<Ratio> {
     let mut sessions = 0u64;
     let mut ai_lines = 0u64;
     let mut human_reworked = 0u64;
-    let mut added = 0u64;
+    let mut covered: BTreeSet<String> = BTreeSet::new();
 
     for event in events {
-        match event.kind {
-            EventKind::AiSession => {
-                let Ok(payload) = event.payload_as::<AiSessionPayload>() else {
-                    continue;
-                };
-                sessions += 1;
-                for file in &payload.files {
-                    ai_lines += file.ai_lines;
-                    human_reworked += file.ai_lines_modified_by_human;
-                }
-            }
-            EventKind::Commit => {
-                if let Ok(payload) = event.payload_as::<CommitPayload>() {
-                    added += payload.files.iter().map(|f| f.added).sum::<u64>();
-                }
-            }
-            _ => {}
+        if event.kind != EventKind::AiSession {
+            continue;
+        }
+        let Ok(payload) = event.payload_as::<AiSessionPayload>() else {
+            continue;
+        };
+        sessions += 1;
+        if let Some(sha) = event.commit_sha.as_deref() {
+            covered.insert(sha.to_string());
+        }
+        for file in &payload.files {
+            ai_lines += file.ai_lines;
+            human_reworked += file.ai_lines_modified_by_human;
         }
     }
-
     if sessions == 0 {
         return None;
     }
+
+    // Only the commits a session was recorded for say anything about who
+    // wrote their lines. The rest are counted, not attributed.
+    let mut added = 0u64;
+    let mut covered_commits = 0u64;
+    let mut uncovered_commits = 0u64;
+    for event in events {
+        if event.kind != EventKind::Commit {
+            continue;
+        }
+        let Ok(payload) = event.payload_as::<CommitPayload>() else {
+            continue;
+        };
+        if covered.contains(&payload.sha) {
+            covered_commits += 1;
+            added += payload.files.iter().map(|f| f.added).sum::<u64>();
+        } else {
+            uncovered_commits += 1;
+        }
+    }
+
     let human_reworked = human_reworked.min(ai_lines);
     Some(Ratio {
         ai_lines,
         accepted_unchanged: ai_lines - human_reworked,
         human_reworked,
         human_lines: added.saturating_sub(ai_lines),
+        covered_commits,
+        uncovered_commits,
     })
 }
 

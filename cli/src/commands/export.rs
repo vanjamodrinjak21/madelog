@@ -103,6 +103,10 @@ pub struct ReportAttribution {
     pub human_reworked: u64,
     pub human_lines: u64,
     pub total_lines: u64,
+    /// Commits with a recorded session, which the figures above cover.
+    pub covered_commits: u64,
+    /// Commits without one, left out of every figure above.
+    pub uncovered_commits: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -122,6 +126,9 @@ pub struct ReportMoment {
 #[derive(Debug, Serialize)]
 pub struct ReportRecord {
     pub chained_events: u64,
+    /// Commits the chain holds that git's history no longer has; not
+    /// counted anywhere else in this report.
+    pub rewritten_commits: u64,
     pub root: String,
     pub hidden_sessions: u64,
     /// True when a server has confirmed the root; the `published` block then
@@ -146,6 +153,8 @@ pub fn build_report(root: &Path) -> Result<Report> {
             human_reworked: r.human_reworked,
             human_lines: r.human_lines,
             total_lines: view.total,
+            covered_commits: r.covered_commits,
+            uncovered_commits: r.uncovered_commits,
         }
     });
 
@@ -193,6 +202,7 @@ pub fn build_report(root: &Path) -> Result<Report> {
             .collect(),
         record: ReportRecord {
             chained_events: ctx.chained_events,
+            rewritten_commits: ctx.rewritten_commits,
             root: ctx.badge.root.clone(),
             hidden_sessions: ctx.hidden_sessions,
             verified: ctx.badge.published.is_some(),

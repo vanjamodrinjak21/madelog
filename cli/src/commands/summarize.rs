@@ -17,8 +17,14 @@ use crate::Ctx;
 /// `madelog summarize [--week N] [--force]`.
 pub fn run(ctx: &mut Ctx<'_>, week: Option<u32>, force: bool) -> Result<()> {
     let store = ctx.open_store()?;
-    let config = Config::load(&ctx.madelog_dir()?.join("config.toml"))?;
-    let events = store.all()?;
+    let madelog_dir = ctx.madelog_dir()?;
+    let config = Config::load(&madelog_dir.join("config.toml"))?;
+    let root = madelog_dir
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| ctx.cwd.clone());
+    // The same commits the page counts: the ones git's history still has.
+    let (events, _) = crate::page::without_rewritten(store.all()?, &root);
 
     let weeks = summarize::bucket(&events);
     if weeks.is_empty() {

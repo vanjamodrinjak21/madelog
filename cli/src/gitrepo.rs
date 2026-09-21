@@ -53,6 +53,38 @@ impl Repo {
             .ok_or_else(|| anyhow!("this is a bare git repository; madelog needs a working tree"))
     }
 
+    /// Whether the object store holds a commit with this sha at all. A commit
+    /// git has never seen, or has pruned, cannot be placed in or out of the
+    /// history, so callers treat it as neither.
+    pub fn has_commit(&self, sha: &str) -> bool {
+        git2::Oid::from_str(sha)
+            .ok()
+            .and_then(|oid| self.inner.find_commit(oid).ok())
+            .is_some()
+    }
+
+    /// Whether `sha` is HEAD or one of its ancestors. A commit that a rebase,
+    /// an amend or a history purge rewrote away may still sit in the object
+    /// store, but it is no longer part of the history the repository tells,
+    /// and the page must not count it.
+    pub fn reachable_from_head(&self, sha: &str) -> Result<bool> {
+        let Some(head) = self.head_sha()? else {
+            return Ok(false);
+        };
+        if head == sha {
+            return Ok(true);
+        }
+        let (Ok(head_oid), Ok(oid)) = (git2::Oid::from_str(&head), git2::Oid::from_str(sha)) else {
+            return Ok(false);
+        };
+        if self.inner.find_commit(oid).is_err() {
+            return Ok(false);
+        }
+        self.inner
+            .graph_descendant_of(head_oid, oid)
+            .with_context(|| format!("checking whether {sha} is in HEAD's history"))
+    }
+
     /// The sha HEAD points at, or `None` before the first commit.
     pub fn head_sha(&self) -> Result<Option<String>> {
         match self.inner.head() {

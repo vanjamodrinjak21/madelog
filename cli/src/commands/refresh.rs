@@ -46,7 +46,7 @@ pub fn refresh(
         patterns: analyse(store)?,
         ..Refreshed::default()
     };
-    done.summaries = summarise(store, config)?;
+    done.summaries = summarise(root, store, config)?;
 
     let page = root.join(".madelog").join("site").join("index.html");
     if already_changed || done.changed() || !page.exists() {
@@ -122,8 +122,10 @@ fn anchor(pattern: &PatternPayload) -> Option<&str> {
 /// the facts have moved on — that is the week you are still working in — but
 /// never when you have edited it yourself. Older weeks are finished, and
 /// rewriting them every commit would fill the log with noise.
-pub fn summarise(store: &Store, config: &Config) -> Result<usize> {
-    let events = store.all()?;
+pub fn summarise(root: &Path, store: &Store, config: &Config) -> Result<usize> {
+    // Commits that git's history no longer has are set aside here exactly
+    // as the page sets them aside, so a summary and the page agree.
+    let (events, _) = crate::page::without_rewritten(store.all()?, root);
     let weeks = summarize::bucket(&events);
     if weeks.is_empty() {
         return Ok(0);

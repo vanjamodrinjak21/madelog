@@ -156,7 +156,7 @@ fn empty_states_render() {
 
     let html = page::render(&ctx).expect("empty states render");
     assert_html_basics(&html);
-    assert!(html.contains("No AI attribution was recorded for this project."));
+    assert!(html.contains("No AI session was recorded for this project"));
     assert!(!html.contains("width:24%"));
     assert!(html.contains("No weekly summaries"));
     assert!(html.contains("<h2 id=\"mo-h\">Two moments</h2>"));
@@ -443,5 +443,113 @@ fn an_empty_log_still_renders() {
     let html = std::fs::read_to_string(path).unwrap();
     assert_html_basics(&html);
     assert!(html.contains("Not yet published"));
-    assert!(html.contains("No AI attribution was recorded for this project."));
+    assert!(html.contains("No AI session was recorded for this project"));
+}
+
+/// A commit that a rebase, an amend or a purge rewrote away stays in the
+/// chain, is counted by verify, and is counted nowhere else on the page.
+#[test]
+fn rewritten_commits_stay_in_the_chain_but_out_of_the_figures() {
+    let repo = seeded_repo();
+    let before = page::build_context(repo.root(), None).expect("build_context");
+    assert_eq!(before.stats.commits, 4);
+    assert_eq!(before.rewritten_commits, 0);
+    assert!(
+        before.ratio.is_some(),
+        "the seeded session is on the second commit"
+    );
+
+    // Throw the last commit away and make a different one in its place.
+    let git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(repo.root())
+            .output()
+            .expect("git runs");
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    git(&["reset", "--hard", "HEAD~2"]);
+    repo.write("src/other.rs", "fn other() {}\n");
+    repo.commit_all("feat(other): a different third commit");
+    madelog::run_capture(repo.root(), &["hook", "post-commit"]).unwrap();
+
+    let after = page::build_context(repo.root(), None).expect("build_context");
+    assert_eq!(after.rewritten_commits, 2);
+    assert_eq!(after.stats.commits, 3, "two kept plus the new one");
+    assert!(
+        after.chained_events > before.chained_events,
+        "the chain lost nothing and gained the new commit (and whatever the hook wrote): {} before, {} after",
+        before.chained_events,
+        after.chained_events
+    );
+    assert!(
+        after
+            .timeline
+            .iter()
+            .all(|e| e.title != "feat(page): tera template skeleton"),
+        "the rewritten commit is off the timeline"
+    );
+    assert!(after
+        .timeline
+        .iter()
+        .any(|e| e.title == "feat(other): a different third commit"));
+
+    let html = page::render(&after).expect("renders");
+    assert!(
+        html.contains(
+            "2 commits from before a history rewrite stay in the chain but are not counted here."
+        ),
+        "{html}"
+    );
+    let verify = madelog::run_capture(repo.root(), &["verify"]).unwrap();
+    assert!(
+        verify.contains(&format!("{} events", after.chained_events)),
+        "{verify}"
+    );
+
+    // The weekly summary counts the same commits the page does.
+    madelog::run_capture(repo.root(), &["summarize", "--force"]).unwrap();
+    let again = page::build_context(repo.root(), None).expect("build_context");
+    let latest = again.summaries.last().expect("a summary");
+    assert!(
+        latest.text.contains("you made 3 commits"),
+        "{}",
+        latest.text
+    );
+}
+
+/// Lines are attributed only in commits that carry a recorded session; the
+/// others are counted but not claimed for anyone.
+#[test]
+fn attribution_covers_only_commits_with_a_session() {
+    let repo = seeded_repo();
+    let ctx = page::build_context(repo.root(), None).expect("build_context");
+    let ratio = ctx.ratio.expect("one session means a ratio");
+    assert_eq!(ratio.covered_commits, 1);
+    assert_eq!(ratio.uncovered_commits, 3);
+    // The covered commit added two lines to src/file1.rs; the session says it
+    // proposed forty, so nothing is left to call hand-written.
+    assert_eq!(ratio.human_lines, 0);
+    assert_eq!(ratio.ai_lines, 40);
+
+    let html = page::render(&ctx).expect("renders");
+    assert!(
+        html.contains("in the 1 commit that carries a recorded AI session"),
+        "{html}"
+    );
+    assert!(
+        html.contains(
+            "3 other commits carry no recorded session; their lines are not attributed either way."
+        ),
+        "{html}"
+    );
+    assert!(!html.contains("Git AI attribution notes"));
+    assert!(
+        html.contains("AI-written lines, where a session was recorded</span>"),
+        "{html}"
+    );
 }

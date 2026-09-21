@@ -410,7 +410,7 @@ section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
       <dd><a href="{{ project.screenshot }}">{{ project.screenshot }}</a></dd>
 {%- endif %}
       <dt>Record</dt>
-      <dd>Hash-chained log of {{ chained_events }} event{{ chained_events | pluralize }}{% if badge.published %}, root confirmed by the server on {{ badge.published.received_at | day }}{% else %}, rendered on this machine{% endif %}. <a href="#badge">Badge</a></dd>
+      <dd>Hash-chained log of {{ chained_events }} event{{ chained_events | pluralize }}{% if badge.published %}, root confirmed by the server on {{ badge.published.received_at | day }}{% else %}, rendered on this machine{% endif %}.{% if rewritten_commits %} {{ rewritten_commits }} commit{{ rewritten_commits | pluralize }} from before a history rewrite {% if rewritten_commits == 1 %}stays{% else %}stay{% endif %} in the chain but {% if rewritten_commits == 1 %}is{% else %}are{% endif %} not counted here.{% endif %} <a href="#badge">Badge</a></dd>
     </dl>
   </section>
 
@@ -418,7 +418,7 @@ section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
   <section class="verdict" aria-label="at a glance">
     <div class="figures">
 {%- if ratio_view and ratio_view.total > 0 %}
-      <div class="lead"><b>{{ ratio_view.ai_pct }}%</b><span>AI-written lines</span></div>
+      <div class="lead"><b>{{ ratio_view.ai_pct }}%</b><span>AI-written lines{% if ratio.uncovered_commits %}, where a session was recorded{% endif %}</span></div>
 {%- endif %}
       <div><b>{{ stats.commits }}</b><span>commit{{ stats.commits | pluralize }}</span></div>
       <div><b>{{ stats.days_active }}</b><span>day{{ stats.days_active | pluralize }} active{% if verdict.span %} · {{ verdict.span }}{% endif %}</span></div>
@@ -510,7 +510,7 @@ section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
   <section class="ratio" id="ratio" aria-labelledby="ra-h">
     <h2 id="ra-h">Code attribution</h2>
 {%- if ratio and ratio_view %}
-    <p class="muted" style="max-width:var(--measure)">Of {{ ratio_view.total | num }} lines that reached the repository, recorded AI sessions proposed {{ ratio.ai_lines | num }}. {{ ratio.accepted_unchanged | num }} of those were kept as they came; {{ ratio.human_reworked | num }} were rewritten before or after commit. Counted per line from Git AI attribution notes.</p>
+    <p class="muted" style="max-width:var(--measure)">Of {{ ratio_view.total | num }} lines{% if ratio.covered_commits %} in the {{ ratio.covered_commits }} commit{{ ratio.covered_commits | pluralize }} that carr{% if ratio.covered_commits == 1 %}ies{% else %}y{% endif %} a recorded AI session{% else %} that reached the repository{% endif %}, the sessions proposed {{ ratio.ai_lines | num }}. {{ ratio.accepted_unchanged | num }} of those were kept as they came; {{ ratio.human_reworked | num }} were rewritten before or after commit.{% if ratio.uncovered_commits %} {{ ratio.uncovered_commits }} other commit{{ ratio.uncovered_commits | pluralize }} carr{% if ratio.uncovered_commits == 1 %}ies{% else %}y{% endif %} no recorded session; {% if ratio.uncovered_commits == 1 %}its{% else %}their{% endif %} lines are not attributed either way.{% endif %} Counted per line from the recorded sessions.</p>
     <div class="ratio-bar" role="img" aria-label="Accepted unchanged {{ ratio_view.accepted_pct }} percent, reworked {{ ratio_view.reworked_pct }} percent, written by hand {{ ratio_view.human_pct }} percent">
       <span class="r-acc" style="width:{{ ratio_view.accepted_pct }}%"></span><span class="r-rew" style="width:{{ ratio_view.reworked_pct }}%"></span><span class="r-hum" style="width:{{ ratio_view.human_pct }}%"></span>
     </div>
@@ -521,7 +521,7 @@ section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
     </div>
     <p class="note">Lines are counted at commit time, so a line the AI proposed and the author rewrote in the same session counts as reworked. Deleted lines are not counted.</p>
 {%- else %}
-    <p class="muted" style="max-width:var(--measure)">No AI attribution was recorded for this project. Without Git AI notes there is no per-line record of what a model proposed, so this page does not guess.</p>
+    <p class="muted" style="max-width:var(--measure)">No AI session was recorded for this project, so there is no per-line record of what a model proposed. This page does not guess.</p>
 {%- endif %}
   </section>
 

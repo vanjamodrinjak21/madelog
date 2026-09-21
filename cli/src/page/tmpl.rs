@@ -645,6 +645,7 @@ mod tests {
             accepted_unchanged: 1310,
             human_reworked: 830,
             human_lines: 3420,
+            ..Default::default()
         });
         assert_eq!(view.total, 5560);
         assert_eq!(view.accepted_pct, 24);
@@ -726,6 +727,7 @@ mod tests {
             accepted_unchanged: 1310,
             human_reworked: 830,
             human_lines: 3420,
+            ..Default::default()
         });
         ctx.timeline = vec![
             TimelineEntry {
@@ -763,6 +765,7 @@ mod tests {
             accepted_unchanged: 12,
             human_reworked: 0,
             human_lines: 0,
+            ..Default::default()
         });
         ctx.stats.commits = 1;
         let v = Verdict::of(&ctx);
