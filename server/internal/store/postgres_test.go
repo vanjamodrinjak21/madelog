@@ -42,7 +42,7 @@ func TestPostgresStoreConformance(t *testing.T) {
 	storetest.Run(t, func(t *testing.T) store.Store {
 		// Each subtest starts from an empty database.
 		if _, err := pool.Exec(context.Background(),
-			"TRUNCATE roots, pages, devices, billing_events RESTART IDENTITY CASCADE"); err != nil {
+			"TRUNCATE page_pdfs, roots, pages, devices, billing_events RESTART IDENTITY CASCADE"); err != nil {
 			t.Fatalf("truncating: %v", err)
 		}
 		return store.FromPool(pool)

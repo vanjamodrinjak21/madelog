@@ -7,12 +7,13 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 const getDevice = `-- name: GetDevice :one
-SELECT id, public_key, email, created_at
+SELECT id, public_key, email, created_at, plan, plan_source, plan_until
 FROM devices
 WHERE id = $1
 `
@@ -25,6 +26,43 @@ func (q *Queries) GetDevice(ctx context.Context, id uuid.UUID) (Device, error) {
 		&i.PublicKey,
 		&i.Email,
 		&i.CreatedAt,
+		&i.Plan,
+		&i.PlanSource,
+		&i.PlanUntil,
+	)
+	return i, err
+}
+
+const setDevicePlan = `-- name: SetDevicePlan :one
+UPDATE devices
+SET plan = $2, plan_source = $3, plan_until = $4
+WHERE id = $1
+RETURNING id, public_key, email, created_at, plan, plan_source, plan_until
+`
+
+type SetDevicePlanParams struct {
+	ID         uuid.UUID
+	Plan       string
+	PlanSource *string
+	PlanUntil  *time.Time
+}
+
+func (q *Queries) SetDevicePlan(ctx context.Context, arg SetDevicePlanParams) (Device, error) {
+	row := q.db.QueryRow(ctx, setDevicePlan,
+		arg.ID,
+		arg.Plan,
+		arg.PlanSource,
+		arg.PlanUntil,
+	)
+	var i Device
+	err := row.Scan(
+		&i.ID,
+		&i.PublicKey,
+		&i.Email,
+		&i.CreatedAt,
+		&i.Plan,
+		&i.PlanSource,
+		&i.PlanUntil,
 	)
 	return i, err
 }
@@ -33,7 +71,7 @@ const upsertDevice = `-- name: UpsertDevice :one
 INSERT INTO devices (public_key)
 VALUES ($1)
 ON CONFLICT (public_key) DO UPDATE SET public_key = EXCLUDED.public_key
-RETURNING id, public_key, email, created_at
+RETURNING id, public_key, email, created_at, plan, plan_source, plan_until
 `
 
 // Idempotent on public_key: the DO UPDATE is a no-op write that lets us use
@@ -46,6 +84,9 @@ func (q *Queries) UpsertDevice(ctx context.Context, publicKey []byte) (Device, e
 		&i.PublicKey,
 		&i.Email,
 		&i.CreatedAt,
+		&i.Plan,
+		&i.PlanSource,
+		&i.PlanUntil,
 	)
 	return i, err
 }

@@ -22,6 +22,9 @@ type Config struct {
 	// LemonSqueezySecret signs the billing webhook. Empty means the webhook
 	// endpoint answers 503.
 	LemonSqueezySecret string
+	// PDFRendererURL is the Gotenberg origin GET /p/{slug}.pdf renders
+	// through. Empty means the endpoint answers 503.
+	PDFRendererURL string
 
 	LogLevel  slog.Leveler
 	LogFormat string // "json" or "text"
@@ -39,6 +42,7 @@ func load(get func(string) string) (Config, error) {
 		ListenAddr:         strings.TrimSpace(get("LISTEN_ADDR")),
 		PublicBaseURL:      strings.TrimRight(strings.TrimSpace(get("PUBLIC_BASE_URL")), "/"),
 		LemonSqueezySecret: get("LEMONSQUEEZY_SECRET"),
+		PDFRendererURL:     strings.TrimRight(strings.TrimSpace(get("PDF_RENDERER_URL")), "/"),
 		LogFormat:          strings.ToLower(strings.TrimSpace(get("LOG_FORMAT"))),
 		ShutdownTimeout:    20 * time.Second,
 	}

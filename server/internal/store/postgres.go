@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -75,6 +76,51 @@ func (p *Postgres) Device(ctx context.Context, id uuid.UUID) (Device, error) {
 		return Device{}, fmt.Errorf("store: get device: %w", err)
 	}
 	return deviceFromRow(row), nil
+}
+
+// SetDevicePlan implements Store.
+func (p *Postgres) SetDevicePlan(ctx context.Context, id uuid.UUID, plan string, source *string, until *time.Time) (Device, error) {
+	row, err := p.q.SetDevicePlan(ctx, db.SetDevicePlanParams{ID: id, Plan: plan, PlanSource: source, PlanUntil: until})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Device{}, ErrNotFound
+	}
+	if err != nil {
+		return Device{}, fmt.Errorf("store: set device plan: %w", err)
+	}
+	return deviceFromRow(row), nil
+}
+
+// PagePDF implements Store.
+func (p *Postgres) PagePDF(ctx context.Context, slug, root, stampDay string) (PagePDF, error) {
+	row, err := p.q.GetPagePDF(ctx, db.GetPagePDFParams{Slug: slug, Root: root, StampDay: stampDay})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return PagePDF{}, ErrNotFound
+	}
+	if err != nil {
+		return PagePDF{}, fmt.Errorf("store: get page pdf: %w", err)
+	}
+	return PagePDF{Slug: row.Slug, Root: row.Root, StampDay: row.StampDay, PDF: row.Pdf, RenderedAt: row.RenderedAt.UTC()}, nil
+}
+
+// PutPagePDF implements Store. The stale-root sweep and the insert share a
+// transaction so a reader never sees the slug with no PDF at all.
+func (p *Postgres) PutPagePDF(ctx context.Context, slug, root, stampDay string, pdf []byte) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("store: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.q.WithTx(tx)
+	if err := q.DeleteStalePagePDFs(ctx, db.DeleteStalePagePDFsParams{Slug: slug, Root: root}); err != nil {
+		return fmt.Errorf("store: delete stale pdfs: %w", err)
+	}
+	if err := q.UpsertPagePDF(ctx, db.UpsertPagePDFParams{Slug: slug, Root: root, StampDay: stampDay, Pdf: pdf}); err != nil {
+		return fmt.Errorf("store: upsert pdf: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("store: commit: %w", err)
+	}
+	return nil
 }
 
 // Page implements Store.
@@ -154,12 +200,19 @@ func (p *Postgres) InsertBillingEvent(ctx context.Context, payload []byte) error
 }
 
 func deviceFromRow(d db.Device) Device {
-	return Device{
-		ID:        d.ID,
-		PublicKey: d.PublicKey,
-		Email:     d.Email,
-		CreatedAt: d.CreatedAt.UTC(),
+	out := Device{
+		ID:         d.ID,
+		PublicKey:  d.PublicKey,
+		Email:      d.Email,
+		CreatedAt:  d.CreatedAt.UTC(),
+		Plan:       d.Plan,
+		PlanSource: d.PlanSource,
 	}
+	if d.PlanUntil != nil {
+		t := d.PlanUntil.UTC()
+		out.PlanUntil = &t
+	}
+	return out
 }
 
 func pageFromRow(p db.Page) Page {

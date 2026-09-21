@@ -15,6 +15,7 @@ type Memory struct {
 	devices  map[uuid.UUID]Device
 	byKey    map[string]uuid.UUID
 	pages    map[string]Page
+	pdfs     map[string]PagePDF
 	roots    []RootRecord
 	billing  [][]byte
 	nextRoot int64
@@ -31,6 +32,7 @@ func NewMemory() *Memory {
 		devices: map[uuid.UUID]Device{},
 		byKey:   map[string]uuid.UUID{},
 		pages:   map[string]Page{},
+		pdfs:    map[string]PagePDF{},
 	}
 }
 
@@ -59,6 +61,7 @@ func (m *Memory) UpsertDevice(_ context.Context, publicKey []byte) (Device, erro
 		ID:        uuid.New(),
 		PublicKey: append([]byte(nil), publicKey...),
 		CreatedAt: m.now(),
+		Plan:      PlanFree,
 	}
 	m.devices[d.ID] = d
 	m.byKey[key] = d.ID
@@ -74,6 +77,69 @@ func (m *Memory) Device(_ context.Context, id uuid.UUID) (Device, error) {
 		return Device{}, ErrNotFound
 	}
 	return d, nil
+}
+
+// SetDevicePlan implements Store.
+func (m *Memory) SetDevicePlan(_ context.Context, id uuid.UUID, plan string, source *string, until *time.Time) (Device, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	d, ok := m.devices[id]
+	if !ok {
+		return Device{}, ErrNotFound
+	}
+	d.Plan = plan
+	d.PlanSource = source
+	if until != nil {
+		u := until.UTC()
+		d.PlanUntil = &u
+	} else {
+		d.PlanUntil = nil
+	}
+	m.devices[id] = d
+	return d, nil
+}
+
+func pdfKey(slug, root, day string) string { return slug + "|" + root + "|" + day }
+
+// PagePDF implements Store.
+func (m *Memory) PagePDF(_ context.Context, slug, root, stampDay string) (PagePDF, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	p, ok := m.pdfs[pdfKey(slug, root, stampDay)]
+	if !ok {
+		return PagePDF{}, ErrNotFound
+	}
+	return p, nil
+}
+
+// PutPagePDF implements Store.
+func (m *Memory) PutPagePDF(_ context.Context, slug, root, stampDay string, pdf []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for k, p := range m.pdfs {
+		if p.Slug == slug && p.Root != root {
+			delete(m.pdfs, k)
+		}
+	}
+	m.pdfs[pdfKey(slug, root, stampDay)] = PagePDF{
+		Slug: slug, Root: root, StampDay: stampDay,
+		PDF:        append([]byte(nil), pdf...),
+		RenderedAt: m.now(),
+	}
+	return nil
+}
+
+// PagePDFCount is how many PDFs are cached for a slug. Test helper.
+func (m *Memory) PagePDFCount(slug string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, p := range m.pdfs {
+		if p.Slug == slug {
+			n++
+		}
+	}
+	return n
 }
 
 // Page implements Store.

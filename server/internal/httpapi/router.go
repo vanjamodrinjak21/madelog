@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/madelog/server/internal/pdf"
 	"github.com/madelog/server/internal/store"
 )
 
@@ -35,13 +36,20 @@ type Config struct {
 	Logger *slog.Logger
 	// RequestTimeout defaults to 30s.
 	RequestTimeout time.Duration
+	// Renderer produces PDFs for GET /p/{slug}.pdf. Nil means the endpoint
+	// answers 503.
+	Renderer pdf.Renderer
+	// Now defaults to time.Now. Tests set it to pin the export stamp.
+	Now func() time.Time
 }
 
 type api struct {
-	store   store.Store
-	cfg     Config
-	log     *slog.Logger
-	baseURL string
+	store    store.Store
+	cfg      Config
+	log      *slog.Logger
+	baseURL  string
+	renderer pdf.Renderer
+	now      func() time.Time
 }
 
 // NewRouter validates cfg and returns the fully wired handler.
@@ -67,7 +75,11 @@ func NewRouter(s store.Store, cfg Config) (http.Handler, error) {
 		cfg.Logger = slog.Default()
 	}
 
-	a := &api{store: s, cfg: cfg, log: cfg.Logger, baseURL: base}
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
+
+	a := &api{store: s, cfg: cfg, log: cfg.Logger, baseURL: base, renderer: cfg.Renderer, now: cfg.Now}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)

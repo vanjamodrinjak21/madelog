@@ -18,6 +18,7 @@ import (
 	"github.com/madelog/server/internal/config"
 	"github.com/madelog/server/internal/httpapi"
 	"github.com/madelog/server/internal/migrate"
+	"github.com/madelog/server/internal/pdf"
 	"github.com/madelog/server/internal/store"
 )
 
@@ -55,16 +56,24 @@ func run() error {
 	}
 	log.Info("schema is up to date")
 
+	var renderer pdf.Renderer
+	if cfg.PDFRendererURL != "" {
+		renderer = pdf.NewGotenberg(cfg.PDFRendererURL, 25*time.Second)
+	}
 	handler, err := httpapi.NewRouter(pg, httpapi.Config{
 		PublicBaseURL:      cfg.PublicBaseURL,
 		LemonSqueezySecret: cfg.LemonSqueezySecret,
 		Logger:             log,
+		Renderer:           renderer,
 	})
 	if err != nil {
 		return err
 	}
 	if cfg.LemonSqueezySecret == "" {
 		log.Warn("LEMONSQUEEZY_SECRET is empty: the billing webhook will answer 503")
+	}
+	if renderer == nil {
+		log.Warn("PDF_RENDERER_URL is empty: GET /p/{slug}.pdf will answer 503")
 	}
 
 	srv := &http.Server{

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -174,9 +175,18 @@ func (a *api) mintSlug(r *http.Request) (string, error) {
 }
 
 // handleServePage serves the stored html. Deleted pages are gone for good as
-// far as readers are concerned.
+// far as readers are concerned. `/p/{slug}.pdf` is the same page as a PDF;
+// a slug can never contain a dot, so the suffix is unambiguous.
 func (a *api) handleServePage(w http.ResponseWriter, r *http.Request) {
 	s := chi.URLParam(r, "slug")
+	if base, ok := strings.CutSuffix(s, ".pdf"); ok {
+		if !slug.Valid(base) {
+			http.NotFound(w, r)
+			return
+		}
+		a.handleServePDF(w, r, base)
+		return
+	}
 	if !slug.Valid(s) {
 		http.NotFound(w, r)
 		return

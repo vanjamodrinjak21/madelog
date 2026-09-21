@@ -198,6 +198,102 @@ func Run(t *testing.T, newStore func(t *testing.T) store.Store) {
 		}
 	})
 
+	sub("SetDevicePlan", func(t *testing.T, s store.Store) {
+		ctx := context.Background()
+		dev := mustDevice(t, s)
+		if dev.Plan != store.PlanFree || dev.Pro(time.Now()) {
+			t.Fatalf("a new device must be free: %+v", dev)
+		}
+
+		src := "manual"
+		until := time.Now().UTC().Add(48 * time.Hour).Truncate(time.Second)
+		got, err := s.SetDevicePlan(ctx, dev.ID, store.PlanPro, &src, &until)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Plan != store.PlanPro || got.PlanSource == nil || *got.PlanSource != "manual" {
+			t.Fatalf("plan not stored: %+v", got)
+		}
+		if got.PlanUntil == nil || !got.PlanUntil.Equal(until) {
+			t.Fatalf("plan_until not round-tripped: %+v", got.PlanUntil)
+		}
+		if !got.Pro(time.Now()) || got.Pro(until.Add(time.Second)) {
+			t.Fatal("Pro() must respect plan_until")
+		}
+
+		back, err := s.Device(ctx, dev.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if back.Plan != store.PlanPro {
+			t.Fatalf("Device() does not see the plan: %+v", back)
+		}
+
+		// No end date, then back to free.
+		if got, err = s.SetDevicePlan(ctx, dev.ID, store.PlanPro, &src, nil); err != nil || got.PlanUntil != nil {
+			t.Fatalf("open-ended plan: %+v, %v", got, err)
+		}
+		if got, err = s.SetDevicePlan(ctx, dev.ID, store.PlanFree, nil, nil); err != nil || got.Pro(time.Now()) {
+			t.Fatalf("back to free: %+v, %v", got, err)
+		}
+
+		if _, err := s.SetDevicePlan(ctx, uuid.New(), store.PlanPro, nil, nil); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("SetDevicePlan(unknown) = %v, want ErrNotFound", err)
+		}
+	})
+
+	sub("PagePDFCachesPerRootAndDay", func(t *testing.T, s store.Store) {
+		ctx := context.Background()
+		dev := mustDevice(t, s)
+		now := time.Now().UTC().Truncate(time.Second)
+		if _, err := s.PublishPage(ctx, store.PublishPageParams{
+			Slug: "paper-crane-x9q1", DeviceID: dev.ID, HTML: "<h1>pdf</h1>",
+			Root: rootA, FirstTS: now, LastTS: now, PublishedTS: now,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := s.PagePDF(ctx, "paper-crane-x9q1", rootA, "2026-09-21"); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("PagePDF before any render = %v, want ErrNotFound", err)
+		}
+		if err := s.PutPagePDF(ctx, "paper-crane-x9q1", rootA, "2026-09-21", []byte("%PDF-1.4 a")); err != nil {
+			t.Fatal(err)
+		}
+		got, err := s.PagePDF(ctx, "paper-crane-x9q1", rootA, "2026-09-21")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got.PDF) != "%PDF-1.4 a" || got.RenderedAt.IsZero() {
+			t.Fatalf("pdf not round-tripped: %+v", got)
+		}
+		// Another day is another entry; the same day is overwritten.
+		if err := s.PutPagePDF(ctx, "paper-crane-x9q1", rootA, "2026-09-22", []byte("%PDF-1.4 b")); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.PutPagePDF(ctx, "paper-crane-x9q1", rootA, "2026-09-22", []byte("%PDF-1.4 c")); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := s.PagePDF(ctx, "paper-crane-x9q1", rootA, "2026-09-22"); string(got.PDF) != "%PDF-1.4 c" {
+			t.Fatalf("same day not overwritten: %q", got.PDF)
+		}
+		if got, _ := s.PagePDF(ctx, "paper-crane-x9q1", rootA, "2026-09-21"); string(got.PDF) != "%PDF-1.4 a" {
+			t.Fatalf("other day lost: %q", got.PDF)
+		}
+
+		// A render for a new root sweeps the old root's copies.
+		if err := s.PutPagePDF(ctx, "paper-crane-x9q1", rootB, "2026-09-23", []byte("%PDF-1.4 d")); err != nil {
+			t.Fatal(err)
+		}
+		for _, day := range []string{"2026-09-21", "2026-09-22"} {
+			if _, err := s.PagePDF(ctx, "paper-crane-x9q1", rootA, day); !errors.Is(err, store.ErrNotFound) {
+				t.Fatalf("stale root %s still cached: %v", day, err)
+			}
+		}
+		if got, err := s.PagePDF(ctx, "paper-crane-x9q1", rootB, "2026-09-23"); err != nil || string(got.PDF) != "%PDF-1.4 d" {
+			t.Fatalf("new root missing: %v %q", err, got.PDF)
+		}
+	})
+
 	sub("InsertBillingEvent", func(t *testing.T, s store.Store) {
 		ctx := context.Background()
 		if err := s.InsertBillingEvent(ctx, []byte(`{"meta":{"event_name":"order_created"}}`)); err != nil {

@@ -17,10 +17,13 @@ type BillingEvent struct {
 }
 
 type Device struct {
-	ID        uuid.UUID
-	PublicKey []byte
-	Email     *string
-	CreatedAt time.Time
+	ID         uuid.UUID
+	PublicKey  []byte
+	Email      *string
+	CreatedAt  time.Time
+	Plan       string
+	PlanSource *string
+	PlanUntil  *time.Time
 }
 
 type Page struct {
@@ -33,6 +36,14 @@ type Page struct {
 	PublishedTs time.Time
 	ReceivedAt  time.Time
 	DeletedAt   *time.Time
+}
+
+type PagePdf struct {
+	Slug       string
+	Root       string
+	StampDay   string
+	Pdf        []byte
+	RenderedAt time.Time
 }
 
 type Root struct {
