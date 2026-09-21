@@ -77,6 +77,17 @@ The slug here is the one in the URL path, never empty:
 delete\nquiet-heron-k7m2
 ```
 
+### Plan — `POST /v1/devices/{id}/plan`
+
+```
+"plan" + "\n" + device_id + "\n" + license_key
+```
+
+`device_id` is the lowercase UUID in the path; `license_key` is exactly the
+string in the request body, untrimmed. The server activates the key with
+LemonSqueezy for this device id and sets `devices.plan = 'pro'`, with
+`plan_until` from the key's `expires_at` (null for a key that never expires).
+
 ### Lemon Squeezy webhook — `POST /v1/webhooks/lemonsqueezy`
 
 Not ed25519. The `X-Signature` header is a lowercase hex HMAC-SHA256 over the
@@ -89,8 +100,11 @@ cannot be verified must not be accepted.
 | Method | Path | Body | Result |
 |---|---|---|---|
 | POST | `/v1/devices` | `{public_key}` | `{device_id}` — idempotent on the public key |
-| POST | `/v1/pages` | `{device_id, slug?, html, root, first_ts, last_ts, published_ts, signature}` | `{slug, url, verify_url, received_at}` |
+| GET | `/v1/devices/{id}` | — | `{device_id, plan, plan_source?, plan_until?}` |
+| POST | `/v1/devices/{id}/plan` | `{license_key, signature}` | the same; 403 `license_rejected`, 502 `licensing_unavailable`, 503 `not_configured` |
+| POST | `/v1/pages` | `{device_id, slug?, html, root, first_ts, last_ts, published_ts, signature}` | `{slug, url, verify_url, received_at, plan, pdf_url?}` |
 | GET | `/p/{slug}` | — | the stored html |
+| GET | `/p/{slug}.pdf` | — | the page as a PDF, Pro only: 402 `pro_required`, 503 `renderer_unavailable` |
 | GET | `/v1/verify/{slug}` | — | `{slug, root, first_ts, last_ts, received_at, device_id}` |
 | DELETE | `/v1/pages/{slug}` | `{device_id, signature}` | `{slug, deleted}` |
 | POST | `/v1/webhooks/lemonsqueezy` | raw JSON | `{ok}` |
@@ -149,6 +163,10 @@ Environment only; see `.env.example`.
 | `PUBLIC_BASE_URL` | yes | — | origin used to build returned URLs; trailing slash trimmed |
 | `LISTEN_ADDR` | no | `:$PORT` or `:8080` | bind address; falls back to the `PORT` env var (Railway) |
 | `LEMONSQUEEZY_SECRET` | no | empty | empty makes the webhook answer 503 |
+| `LEMONSQUEEZY_STORE_ID` | no | empty | when set, only license keys from this store activate a plan; empty accepts any store (tests only) |
+| `LEMONSQUEEZY_LICENSE_URL` | no | `https://api.lemonsqueezy.com` | where keys are activated; a fake in tests |
+| `LICENSING_DISABLED` | no | `false` | `true` makes `POST /v1/devices/{id}/plan` answer 503 |
+| `PDF_RENDERER_URL` | no | empty | Gotenberg origin for `GET /p/{slug}.pdf`; empty answers 503 |
 | `LOG_LEVEL` | no | `info` | debug, info, warn, error |
 | `LOG_FORMAT` | no | `json` | json or text |
 

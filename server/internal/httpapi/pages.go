@@ -36,6 +36,9 @@ type publishResponse struct {
 	URL        string    `json:"url"`
 	VerifyURL  string    `json:"verify_url"`
 	ReceivedAt time.Time `json:"received_at"`
+	// Plan is the device's plan; PDFURL is set only on Pro.
+	Plan   string `json:"plan"`
+	PDFURL string `json:"pdf_url,omitempty"`
 }
 
 // handlePublishPage stores a signed page. See server/README.md for the exact
@@ -147,12 +150,17 @@ func (a *api) handlePublishPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, r, http.StatusOK, publishResponse{
+	out := publishResponse{
 		Slug:       page.Slug,
 		URL:        a.pageURL(page.Slug),
 		VerifyURL:  a.verifyURL(page.Slug),
 		ReceivedAt: page.ReceivedAt.UTC(),
-	})
+		Plan:       dev.Plan,
+	}
+	if dev.Pro(a.now()) {
+		out.PDFURL = a.pdfURL(page.Slug)
+	}
+	writeJSON(w, r, http.StatusOK, out)
 }
 
 // mintSlug returns a slug nothing has used yet. Deleted pages keep their row,

@@ -17,6 +17,7 @@ import (
 
 	"github.com/madelog/server/internal/config"
 	"github.com/madelog/server/internal/httpapi"
+	"github.com/madelog/server/internal/licensing"
 	"github.com/madelog/server/internal/migrate"
 	"github.com/madelog/server/internal/pdf"
 	"github.com/madelog/server/internal/store"
@@ -60,11 +61,17 @@ func run() error {
 	if cfg.PDFRendererURL != "" {
 		renderer = pdf.NewGotenberg(cfg.PDFRendererURL, 25*time.Second)
 	}
+	var activator licensing.Activator
+	if !cfg.LicensingDisabled {
+		activator = licensing.New(cfg.LicenseURL, 15*time.Second)
+	}
 	handler, err := httpapi.NewRouter(pg, httpapi.Config{
 		PublicBaseURL:      cfg.PublicBaseURL,
 		LemonSqueezySecret: cfg.LemonSqueezySecret,
 		Logger:             log,
 		Renderer:           renderer,
+		Activator:          activator,
+		LicenseStoreID:     cfg.LicenseStoreID,
 	})
 	if err != nil {
 		return err
@@ -74,6 +81,11 @@ func run() error {
 	}
 	if renderer == nil {
 		log.Warn("PDF_RENDERER_URL is empty: GET /p/{slug}.pdf will answer 503")
+	}
+	if activator == nil {
+		log.Warn("LICENSING_DISABLED is set: POST /v1/devices/{id}/plan will answer 503")
+	} else if cfg.LicenseStoreID == 0 {
+		log.Warn("LEMONSQUEEZY_STORE_ID is empty: license keys from any LemonSqueezy store will be accepted")
 	}
 
 	srv := &http.Server{

@@ -47,6 +47,16 @@ func DeleteMessage(slug string) []byte {
 	return []byte("delete\n" + slug)
 }
 
+// PlanMessage is the byte string signed by POST /v1/devices/{id}/plan.
+//
+//	"plan" + "\n" + device_id + "\n" + license_key
+//
+// device_id is the lowercase UUID in the path and license_key is exactly what
+// the client put in the request body.
+func PlanMessage(deviceID, licenseKey string) []byte {
+	return []byte("plan\n" + deviceID + "\n" + licenseKey)
+}
+
 // ParsePublicKeyHex decodes a hex-encoded 32-byte ed25519 public key.
 func ParsePublicKeyHex(s string) (ed25519.PublicKey, error) {
 	b, err := hex.DecodeString(s)

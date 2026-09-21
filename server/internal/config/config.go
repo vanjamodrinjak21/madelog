@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,6 +26,14 @@ type Config struct {
 	// PDFRendererURL is the Gotenberg origin GET /p/{slug}.pdf renders
 	// through. Empty means the endpoint answers 503.
 	PDFRendererURL string
+	// LicenseURL is the LemonSqueezy origin license keys are activated
+	// against. Empty means the public API.
+	LicenseURL string
+	// LicenseStoreID, when set, is the only LemonSqueezy store whose keys
+	// are accepted. Zero accepts any store, which is only right in tests.
+	LicenseStoreID int64
+	// LicensingDisabled turns POST /v1/devices/{id}/plan off (503).
+	LicensingDisabled bool
 
 	LogLevel  slog.Leveler
 	LogFormat string // "json" or "text"
@@ -43,6 +52,8 @@ func load(get func(string) string) (Config, error) {
 		PublicBaseURL:      strings.TrimRight(strings.TrimSpace(get("PUBLIC_BASE_URL")), "/"),
 		LemonSqueezySecret: get("LEMONSQUEEZY_SECRET"),
 		PDFRendererURL:     strings.TrimRight(strings.TrimSpace(get("PDF_RENDERER_URL")), "/"),
+		LicenseURL:         strings.TrimRight(strings.TrimSpace(get("LEMONSQUEEZY_LICENSE_URL")), "/"),
+		LicensingDisabled:  strings.EqualFold(strings.TrimSpace(get("LICENSING_DISABLED")), "true"),
 		LogFormat:          strings.ToLower(strings.TrimSpace(get("LOG_FORMAT"))),
 		ShutdownTimeout:    20 * time.Second,
 	}
@@ -66,6 +77,14 @@ func load(get func(string) string) (Config, error) {
 	}
 	if cfg.LogFormat != "json" && cfg.LogFormat != "text" {
 		return Config{}, fmt.Errorf("config: LOG_FORMAT must be json or text, got %q", cfg.LogFormat)
+	}
+
+	if raw := strings.TrimSpace(get("LEMONSQUEEZY_STORE_ID")); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			return Config{}, fmt.Errorf("config: LEMONSQUEEZY_STORE_ID must be a positive integer, got %q", raw)
+		}
+		cfg.LicenseStoreID = id
 	}
 
 	level, err := parseLevel(get("LOG_LEVEL"))

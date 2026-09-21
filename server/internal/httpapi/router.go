@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/madelog/server/internal/licensing"
 	"github.com/madelog/server/internal/pdf"
 	"github.com/madelog/server/internal/store"
 )
@@ -41,16 +42,26 @@ type Config struct {
 	Renderer pdf.Renderer
 	// Now defaults to time.Now. Tests set it to pin the export stamp.
 	Now func() time.Time
+	// Activator turns a license key into a plan. Nil means
+	// POST /v1/devices/{id}/plan answers 503.
+	Activator licensing.Activator
+	// LicenseStoreID, when non-zero, is the only LemonSqueezy store whose
+	// keys are accepted.
+	LicenseStoreID int64
 }
 
 type api struct {
-	store    store.Store
-	cfg      Config
-	log      *slog.Logger
-	baseURL  string
-	renderer pdf.Renderer
-	now      func() time.Time
+	store     store.Store
+	cfg       Config
+	log       *slog.Logger
+	baseURL   string
+	renderer  pdf.Renderer
+	now       func() time.Time
+	activator licensing.Activator
 }
+
+// pdfURL is the public address of a page's PDF.
+func (a *api) pdfURL(slug string) string { return a.baseURL + "/p/" + slug + ".pdf" }
 
 // NewRouter validates cfg and returns the fully wired handler.
 func NewRouter(s store.Store, cfg Config) (http.Handler, error) {
@@ -79,7 +90,7 @@ func NewRouter(s store.Store, cfg Config) (http.Handler, error) {
 		cfg.Now = time.Now
 	}
 
-	a := &api{store: s, cfg: cfg, log: cfg.Logger, baseURL: base, renderer: cfg.Renderer, now: cfg.Now}
+	a := &api{store: s, cfg: cfg, log: cfg.Logger, baseURL: base, renderer: cfg.Renderer, now: cfg.Now, activator: cfg.Activator}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -98,6 +109,8 @@ func NewRouter(s store.Store, cfg Config) (http.Handler, error) {
 
 	r.Route("/v1", func(r chi.Router) {
 		r.Post("/devices", a.handleCreateDevice)
+		r.Get("/devices/{id}", a.handleGetDevice)
+		r.Post("/devices/{id}/plan", a.handleActivatePlan)
 		r.Post("/pages", a.handlePublishPage)
 		r.Delete("/pages/{slug}", a.handleDeletePage)
 		r.Get("/verify/{slug}", a.handleVerify)
