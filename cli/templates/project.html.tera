@@ -511,15 +511,15 @@ section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
     <h2 id="ra-h">Code attribution</h2>
 {%- if ratio and ratio_view %}
     <p class="muted" style="max-width:var(--measure)">Of {{ ratio_view.total | num }} lines{% if ratio.covered_commits %} in the {{ ratio.covered_commits }} commit{{ ratio.covered_commits | pluralize }} that carr{% if ratio.covered_commits == 1 %}ies{% else %}y{% endif %} a recorded AI session{% else %} that reached the repository{% endif %}, the sessions proposed {{ ratio.ai_lines | num }}. {{ ratio.accepted_unchanged | num }} of those were kept as they came; {{ ratio.human_reworked | num }} were rewritten before or after commit.{% if ratio.uncovered_commits %} {{ ratio.uncovered_commits }} other commit{{ ratio.uncovered_commits | pluralize }} carr{% if ratio.uncovered_commits == 1 %}ies{% else %}y{% endif %} no recorded session; {% if ratio.uncovered_commits == 1 %}its{% else %}their{% endif %} lines are not attributed either way.{% endif %} Counted per line from the recorded sessions.</p>
-    <div class="ratio-bar" role="img" aria-label="Accepted unchanged {{ ratio_view.accepted_pct }} percent, reworked {{ ratio_view.reworked_pct }} percent, written by hand {{ ratio_view.human_pct }} percent">
+    <div class="ratio-bar" role="img" aria-label="Accepted unchanged {{ ratio_view.accepted_pct }} percent, reworked {{ ratio_view.reworked_pct }} percent, no recorded session {{ ratio_view.human_pct }} percent">
       <span class="r-acc" style="width:{{ ratio_view.accepted_pct }}%"></span><span class="r-rew" style="width:{{ ratio_view.reworked_pct }}%"></span><span class="r-hum" style="width:{{ ratio_view.human_pct }}%"></span>
     </div>
     <div class="ratio-legend">
       <div class="r-acc"><b><i></i>{{ ratio.accepted_unchanged | num }} lines</b><span>AI-proposed, accepted unchanged ({{ ratio_view.accepted_pct }}%)</span></div>
       <div class="r-rew"><b><i></i>{{ ratio.human_reworked | num }} lines</b><span>AI-proposed, reworked by hand ({{ ratio_view.reworked_pct }}%)</span></div>
-      <div class="r-hum"><b><i></i>{{ ratio.human_lines | num }} lines</b><span>written by hand ({{ ratio_view.human_pct }}%)</span></div>
+      <div class="r-hum"><b><i></i>{{ ratio.human_lines | num }} lines</b><span>no recorded session proposed them ({{ ratio_view.human_pct }}%)</span></div>
     </div>
-    <p class="note">Lines are counted at commit time, so a line the AI proposed and the author rewrote in the same session counts as reworked. Deleted lines are not counted.</p>
+    <p class="note">Lines are counted at commit time, so a line the AI proposed and the author rewrote in the same session counts as reworked. A line no recorded session proposed is not claimed as hand-written: a session madelog could not see may have written it. Deleted lines are not counted.</p>
 {%- else %}
     <p class="muted" style="max-width:var(--measure)">No AI session was recorded for this project, so there is no per-line record of what a model proposed. This page does not guess.</p>
 {%- endif %}
