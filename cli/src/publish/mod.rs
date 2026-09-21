@@ -167,7 +167,8 @@ pub struct PageRequest {
     pub signature: String,
 }
 
-/// `{slug, url, verify_url, received_at}`.
+/// `{slug, url, verify_url, received_at, plan, pdf_url}`. The last two arrived
+/// with Pro; an older server simply leaves them empty.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct PageResponse {
     pub slug: String,
@@ -177,6 +178,27 @@ pub struct PageResponse {
     pub verify_url: String,
     #[serde(default)]
     pub received_at: String,
+    #[serde(default)]
+    pub plan: String,
+    #[serde(default)]
+    pub pdf_url: String,
+}
+
+#[derive(Debug, Serialize)]
+struct PlanRequest<'a> {
+    license_key: &'a str,
+    signature: &'a str,
+}
+
+/// `{device_id, plan, plan_source, plan_until}`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct PlanResponse {
+    pub device_id: String,
+    pub plan: String,
+    #[serde(default)]
+    pub plan_source: Option<String>,
+    #[serde(default)]
+    pub plan_until: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -286,6 +308,34 @@ impl Client {
             return Ok(());
         }
         Err(refusal("deleting the page", status, &answer))
+    }
+
+    /// `POST /v1/devices/{id}/plan` with `{license_key, signature}`.
+    pub fn activate_plan(
+        &self,
+        device_id: &str,
+        license_key: &str,
+        signature_hex: &str,
+    ) -> Result<PlanResponse, ApiError> {
+        let url = format!("{}/v1/devices/{device_id}/plan", self.base);
+        let body = serde_json::to_string(&PlanRequest {
+            license_key,
+            signature: signature_hex,
+        })
+        .expect("a plan request always serialises");
+        let (status, answer) = self.send_json("POST", &url, &body)?;
+        if status == 404 {
+            return Err(ApiError::UnknownDevice);
+        }
+        if status != 200 {
+            return Err(refusal("activating the license", status, &answer));
+        }
+        let parsed: PlanResponse = serde_json::from_str(answer.trim()).map_err(|e| {
+            ApiError::Transport(anyhow::anyhow!(
+                "{url} did not answer with a plan ({e}); is that really a madelog server?"
+            ))
+        })?;
+        Ok(parsed)
     }
 
     /// `GET /healthz` — is a madelog server answering at all?

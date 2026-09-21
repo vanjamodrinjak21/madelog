@@ -54,6 +54,8 @@ pub enum Command {
     Publish(PublishArgs),
     /// Take the published page down again.
     Unpublish(UnpublishArgs),
+    /// Put this machine on madelog Pro with the license key from your receipt.
+    Pro(ProArgs),
     /// Look for patterns in the log and record them.
     Analyze(AnalyzeArgs),
     /// Write weekly summaries.
@@ -205,6 +207,15 @@ pub struct ExportArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct ProArgs {
+    /// The license key on your LemonSqueezy receipt.
+    pub license_key: String,
+    /// The server to activate on. Defaults to server.url.
+    #[arg(long)]
+    pub server: Option<String>,
+}
+
+#[derive(Debug, Args)]
 pub struct HideArgs {
     /// The id of the ai_session event to hide.
     pub event_id: String,
@@ -323,6 +334,7 @@ pub fn dispatch(cli: Cli, ctx: &mut Ctx<'_>) -> Result<()> {
             },
         ),
         Command::Doctor(args) => commands::doctor::run(ctx, args.fix),
+        Command::Pro(args) => commands::pro::run(ctx, &args.license_key, args.server.as_deref()),
         Command::Open(args) => commands::open::run(ctx, args.print),
         Command::Log(args) => commands::log::run(ctx, args.json),
         Command::Verify => commands::verify::run(ctx),

@@ -245,6 +245,9 @@ fn upload(ctx: &mut Ctx<'_>, root: &Path, page_path: &Path, server: Option<&str>
     ctx.say(&format!("verify {verify_url}"))?;
     ctx.blank()?;
     ctx.say(&format!("published  {url}"))?;
+    if !response.pdf_url.trim().is_empty() {
+        ctx.say(&format!("pdf        {}", response.pdf_url.trim()))?;
+    }
     ctx.say("Send that link. `madelog unpublish` takes it down again.")?;
     Ok(())
 }

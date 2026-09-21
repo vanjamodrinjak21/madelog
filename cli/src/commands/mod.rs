@@ -12,6 +12,7 @@ pub mod log;
 pub mod note;
 pub mod onboard;
 pub mod open;
+pub mod pro;
 pub mod status;
 pub mod verify;
 
