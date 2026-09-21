@@ -136,6 +136,28 @@ fn refusal(what: &str, status: u16, body: &str) -> ApiError {
     ApiError::Refused { status, message }
 }
 
+/// Plain English for what `POST /v1/devices/{id}/plan` can answer. The
+/// publish wording does not fit here: a 403 is about the key, not a page.
+fn plan_refusal(status: u16, body: &str) -> ApiError {
+    let said = server_words(body);
+    let message = match status {
+        403 => "the license key was not accepted. Check it against your receipt; a key \
+                also stops working when it has expired or is already in use on as many \
+                machines as it allows."
+            .to_string(),
+        502 => "the server could not reach LemonSqueezy to check the key. Nothing \
+                changed; try again in a minute."
+            .to_string(),
+        503 => "license activation is not switched on at that server.".to_string(),
+        _ => return refusal("activating the license", status, body),
+    };
+    let message = match said {
+        Some(said) => format!("{message} The server said: {said}"),
+        None => message,
+    };
+    ApiError::Refused { status, message }
+}
+
 // ---------------------------------------------------------------------------
 // wire shapes
 // ---------------------------------------------------------------------------
@@ -328,7 +350,7 @@ impl Client {
             return Err(ApiError::UnknownDevice);
         }
         if status != 200 {
-            return Err(refusal("activating the license", status, &answer));
+            return Err(plan_refusal(status, &answer));
         }
         let parsed: PlanResponse = serde_json::from_str(answer.trim()).map_err(|e| {
             ApiError::Transport(anyhow::anyhow!(
@@ -387,6 +409,50 @@ mod tests {
     use std::net::TcpListener;
 
     /// A throwaway HTTP server: one canned answer, and it remembers what it saw.
+    #[test]
+    fn activating_a_plan_speaks_about_the_key_not_the_page() {
+        let (addr, seen) = serve_once(
+            403,
+            r#"{"error":"license_rejected","message":"license_key not found"}"#,
+        );
+        let err = Client::new(&addr)
+            .activate_plan("6ba7b810-9dad-11d1-80b4-00c04fd430c8", "KEY-1", "ab")
+            .unwrap_err();
+        let text = err.to_string();
+        assert!(text.contains("license key was not accepted"), "{text}");
+        assert!(text.contains("license_key not found"), "{text}");
+        assert!(!text.contains("belongs to another device"), "{text}");
+        let request = seen.recv().unwrap();
+        assert!(
+            request.starts_with("POST /v1/devices/6ba7b810-9dad-11d1-80b4-00c04fd430c8/plan "),
+            "{request}"
+        );
+        assert!(request.contains(r#""license_key":"KEY-1""#), "{request}");
+
+        let (addr, _) = serve_once(
+            200,
+            r#"{"device_id":"6ba7b810-9dad-11d1-80b4-00c04fd430c8","plan":"pro","plan_source":"lemonsqueezy:41:i","plan_until":"2027-09-01T00:00:00Z"}"#,
+        );
+        let plan = Client::new(&addr)
+            .activate_plan("6ba7b810-9dad-11d1-80b4-00c04fd430c8", "KEY-1", "ab")
+            .unwrap();
+        assert_eq!(plan.plan, "pro");
+        assert_eq!(plan.plan_until.as_deref(), Some("2027-09-01T00:00:00Z"));
+
+        let (addr, _) = serve_once(502, r#"{"error":"licensing_unavailable","message":"x"}"#);
+        let text = Client::new(&addr)
+            .activate_plan("d", "K", "ab")
+            .unwrap_err()
+            .to_string();
+        assert!(text.contains("could not reach LemonSqueezy"), "{text}");
+        let (addr, _) = serve_once(503, "{}");
+        let text = Client::new(&addr)
+            .activate_plan("d", "K", "ab")
+            .unwrap_err()
+            .to_string();
+        assert!(text.contains("not switched on"), "{text}");
+    }
+
     fn serve_once(status: u16, body: &'static str) -> (String, std::sync::mpsc::Receiver<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = format!("http://{}", listener.local_addr().unwrap());
