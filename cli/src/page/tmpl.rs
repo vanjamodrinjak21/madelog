@@ -165,16 +165,33 @@ const HEADLINE_MAX: usize = 72;
 /// A quoted decision longer than this is cut at a word boundary.
 const DECISION_MAX: usize = 96;
 
+/// Public decisions as the sheet lists them: the pinned ones first, in the
+/// order they were pinned, then the rest by time.
+fn ordered_decisions(ctx: &PageContext) -> Vec<(&str, &str)> {
+    let all: Vec<(&str, &str)> = ctx
+        .timeline
+        .iter()
+        .filter(|e| e.kind == "decision")
+        .map(|e| (e.id.as_str(), e.title.trim()))
+        .filter(|(_, t)| !t.is_empty())
+        .collect();
+    let mut out: Vec<(&str, &str)> = ctx
+        .pinned
+        .iter()
+        .filter_map(|id| all.iter().find(|(i, _)| *i == id.as_str()).copied())
+        .collect();
+    out.extend(
+        all.iter()
+            .filter(|(i, _)| !ctx.pinned.iter().any(|p| p == i))
+            .copied(),
+    );
+    out
+}
+
 impl Verdict {
     pub fn of(ctx: &PageContext) -> Verdict {
         let headline = headline(&ctx.project.name, &ctx.project.what);
-        let decisions: Vec<(&str, &str)> = ctx
-            .timeline
-            .iter()
-            .filter(|e| e.kind == "decision")
-            .map(|e| (e.id.as_str(), e.title.trim()))
-            .filter(|(_, t)| !t.is_empty())
-            .collect();
+        let decisions = ordered_decisions(ctx);
         // A full stop or a capital is not a cut; only lost words are.
         let full = ctx.project.what.trim().trim_end_matches(['.', ',']);
         Verdict {
@@ -347,14 +364,21 @@ fn highlights(ctx: &PageContext) -> Vec<String> {
         }
     }
 
-    if let Some(decision) = ctx
-        .timeline
-        .iter()
-        .rev()
-        .find(|e| e.kind == "decision")
-        .map(|e| e.title.trim())
-        .filter(|t| !t.is_empty())
-    {
+    let pinned = ctx.pinned.iter().find_map(|id| {
+        ctx.timeline
+            .iter()
+            .find(|e| e.kind == "decision" && e.id == *id)
+            .map(|e| e.title.trim())
+            .filter(|t| !t.is_empty())
+    });
+    if let Some(decision) = pinned.or_else(|| {
+        ctx.timeline
+            .iter()
+            .rev()
+            .find(|e| e.kind == "decision")
+            .map(|e| e.title.trim())
+            .filter(|t| !t.is_empty())
+    }) {
         out.push(format!("Decided: {}", cut_words(decision, DECISION_MAX)));
     }
 

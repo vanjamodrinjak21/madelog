@@ -265,6 +265,7 @@ mod tests {
         Payload::Decision(DecisionPayload {
             text: text.to_string(),
             private: false,
+            amends: None,
         })
     }
 

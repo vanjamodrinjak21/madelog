@@ -48,6 +48,8 @@ pub enum Command {
     Export(ExportArgs),
     /// Hide one AI session from the published page.
     Hide(HideArgs),
+    /// Pin a decision so the printed sheet and the page headline lead with it.
+    Pin(PinArgs),
     /// Read or change a configuration value.
     Config(ConfigArgs),
     /// Render the project page and publish it.
@@ -116,6 +118,11 @@ pub struct NoteArgs {
     /// Anchor the note to this commit instead of HEAD. A short sha will do.
     #[arg(long = "at", value_name = "SHA")]
     pub at: Option<String>,
+    /// Correct an earlier decision: the page shows this sentence in its place,
+    /// at its original position. Give the decision's id (a unique prefix will
+    /// do). The original stays in the chain.
+    #[arg(long, value_name = "DECISION_ID")]
+    pub amends: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -225,6 +232,15 @@ pub struct HideArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct PinArgs {
+    /// The id of the public decision to pin (a unique prefix will do).
+    pub decision_id: String,
+    /// Remove the pin instead of adding it.
+    #[arg(long)]
+    pub remove: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct ConfigArgs {
     #[command(subcommand)]
     pub command: ConfigCommand,
@@ -312,9 +328,13 @@ pub fn dispatch(cli: Cli, ctx: &mut Ctx<'_>) -> Result<()> {
     match cli.command {
         Command::Init(args) => commands::init::run(ctx, commands::init::Options::from_args(&args)),
         Command::Onboard(args) => commands::onboard::run(ctx, args.project, args.yes),
-        Command::Note(args) => {
-            commands::note::run(ctx, &args.text.join(" "), args.private, args.at.as_deref())
-        }
+        Command::Note(args) => commands::note::run(
+            ctx,
+            &args.text.join(" "),
+            args.private,
+            args.at.as_deref(),
+            args.amends.as_deref(),
+        ),
         Command::Backfill(args) => commands::backfill::run(
             ctx,
             commands::backfill::Options {
@@ -345,6 +365,7 @@ pub fn dispatch(cli: Cli, ctx: &mut Ctx<'_>) -> Result<()> {
             commands::export::run(ctx, args.path.as_deref(), args.report, args.md)
         }
         Command::Hide(args) => commands::hide::run(ctx, &args.event_id),
+        Command::Pin(args) => commands::pin::run(ctx, &args.decision_id, args.remove),
         Command::Config(args) => commands::config::run(ctx, args.command),
         Command::Publish(args) => commands::publish::run(
             ctx,

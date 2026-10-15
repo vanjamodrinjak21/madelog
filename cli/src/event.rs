@@ -31,6 +31,7 @@ pub enum EventKind {
     Pattern,
     Summary,
     Hide,
+    Pin,
 }
 
 impl EventKind {
@@ -43,6 +44,7 @@ impl EventKind {
             EventKind::Pattern => "pattern",
             EventKind::Summary => "summary",
             EventKind::Hide => "hide",
+            EventKind::Pin => "pin",
         }
     }
 }
@@ -69,6 +71,7 @@ impl FromStr for EventKind {
             "pattern" => EventKind::Pattern,
             "summary" => EventKind::Summary,
             "hide" => EventKind::Hide,
+            "pin" => EventKind::Pin,
             other => return Err(UnknownEventKind(other.to_string())),
         })
     }
@@ -167,6 +170,13 @@ pub struct DecisionPayload {
     pub text: String,
     /// Private decisions are chained but never rendered.
     pub private: bool,
+    /// The id of the earlier decision this one corrects. The page shows the
+    /// newest amendment in place of the decision it amends.
+    ///
+    /// Absent — never null — on every decision recorded before amending
+    /// existed, so every hash written until now still verifies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub amends: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -205,6 +215,15 @@ pub struct HidePayload {
     pub target_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PinPayload {
+    /// The id of the decision to pin, or to unpin.
+    pub target_id: String,
+    /// `true` pins, `false` removes the pin.
+    pub pinned: bool,
+}
+
 /// A typed payload plus the kind it belongs to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Payload {
@@ -215,6 +234,7 @@ pub enum Payload {
     Pattern(PatternPayload),
     Summary(SummaryPayload),
     Hide(HidePayload),
+    Pin(PinPayload),
 }
 
 impl Payload {
@@ -227,6 +247,7 @@ impl Payload {
             Payload::Pattern(_) => EventKind::Pattern,
             Payload::Summary(_) => EventKind::Summary,
             Payload::Hide(_) => EventKind::Hide,
+            Payload::Pin(_) => EventKind::Pin,
         }
     }
 
@@ -240,6 +261,7 @@ impl Payload {
             Payload::Pattern(p) => serde_json::to_value(p),
             Payload::Summary(p) => serde_json::to_value(p),
             Payload::Hide(p) => serde_json::to_value(p),
+            Payload::Pin(p) => serde_json::to_value(p),
         };
         v.expect("payload structs always serialise")
     }
@@ -310,10 +332,16 @@ impl Event {
                     .get("text")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
+                let amends = self
+                    .payload
+                    .get("amends")
+                    .and_then(|v| v.as_str())
+                    .map(|id| format!(" (amends {id})"))
+                    .unwrap_or_default();
                 if private {
-                    format!("{text} (private)")
+                    format!("{text} (private){amends}")
                 } else {
-                    text.to_string()
+                    format!("{text}{amends}")
                 }
             }
             EventKind::Pattern => {
@@ -344,6 +372,19 @@ impl Event {
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 format!("hid {target}")
+            }
+            EventKind::Pin => {
+                let target = self
+                    .payload
+                    .get("target_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let pinned = self
+                    .payload
+                    .get("pinned")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                format!("{} {target}", if pinned { "pinned" } else { "unpinned" })
             }
         }
     }
@@ -521,6 +562,27 @@ mod tests {
         );
         assert_eq!(ts_from_unix(0).as_deref(), Some("1970-01-01T00:00:00Z"));
         assert_eq!(ts_from_unix(i64::MAX), None);
+    }
+
+    #[test]
+    fn an_absent_amends_is_omitted_rather_than_nulled() {
+        let mut d = DecisionPayload {
+            text: "t".into(),
+            private: false,
+            amends: None,
+        };
+        let without = canonical_json(&serde_json::to_value(&d).unwrap());
+        assert_eq!(without, r#"{"private":false,"text":"t"}"#);
+        d.amends = Some("abc".into());
+        let with = canonical_json(&serde_json::to_value(&d).unwrap());
+        assert_eq!(with, r#"{"amends":"abc","private":false,"text":"t"}"#);
+    }
+
+    #[test]
+    fn a_decision_written_before_amends_existed_still_reads() {
+        let old = serde_json::json!({"text": "t", "private": true});
+        let d: DecisionPayload = serde_json::from_value(old).unwrap();
+        assert_eq!(d.amends, None);
     }
 
     #[test]

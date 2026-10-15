@@ -49,6 +49,7 @@ fn record_decision(repo: &TestRepo, ts: &str, text: &str, private: bool) {
     let payload = Payload::Decision(DecisionPayload {
         text: text.to_string(),
         private,
+        amends: None,
     });
     store(repo)
         .append_at(

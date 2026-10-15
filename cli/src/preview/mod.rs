@@ -133,8 +133,9 @@ impl Model {
 
     pub fn from_events(project: &str, events: &[Event]) -> Model {
         let hidden = hidden_ids(events);
+        let resolved = crate::page::resolve_amendments(events.to_vec());
         let mut items = Vec::new();
-        for event in events {
+        for event in &resolved.events {
             let Some(kind) = item_kind(event.kind) else {
                 continue;
             };
@@ -659,6 +660,7 @@ mod tests {
                 &Payload::Decision(DecisionPayload {
                     text: "chose sqlite over a file per event".into(),
                     private: false,
+                    amends: None,
                 }),
             )
             .unwrap();
@@ -668,6 +670,7 @@ mod tests {
                 &Payload::Decision(DecisionPayload {
                     text: "this one is nobody's business".into(),
                     private: true,
+                    amends: None,
                 }),
             )
             .unwrap();

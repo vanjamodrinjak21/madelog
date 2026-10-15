@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::Config;
 use crate::event::{
     AiSessionPayload, CommitPayload, DecisionPayload, Event, EventKind, HidePayload, IntentPayload,
-    SummaryPayload,
+    PinPayload, SummaryPayload,
 };
 use crate::moments::Moment;
 use crate::store::Store;
@@ -167,6 +167,10 @@ pub struct PageContext {
     pub ratio: Option<Ratio>,
     pub summaries: Vec<SummaryPayload>,
     pub hidden_sessions: u64,
+    /// Ids of the decisions the author pinned, in the order they were pinned.
+    /// A pinned decision that is private or unknown is not on the timeline,
+    /// and is simply never looked up.
+    pub pinned: Vec<String>,
     /// Every event in the chain, which is what `madelog verify` counts. The
     /// timeline shows fewer: intents, patterns, summaries, hides and private
     /// decisions are chained but not drawn.
@@ -196,6 +200,10 @@ pub fn build_context(root: &Path, published: Option<Published>) -> Result<PageCo
     let last_ts = all_events.last().map(|e| e.ts.clone());
     let chained_events = all_events.len() as u64;
     let (events, rewritten_commits) = without_rewritten(all_events, root);
+    // An amended decision is replaced by its newest amendment, in place.
+    let resolved = resolve_amendments(events);
+    let pinned = pinned_order(&resolved.events, &resolved.roots);
+    let events = resolved.events;
 
     // The badge is about the chain, so it keeps `ts`: it certifies when
     // madelog recorded things. Everything the reader is told about the work
@@ -220,6 +228,7 @@ pub fn build_context(root: &Path, published: Option<Published>) -> Result<PageCo
         ratio: ratio(&events),
         summaries: crate::summarize::latest_summaries(&events),
         hidden_sessions,
+        pinned,
         chained_events,
         rewritten_commits,
         stack: crate::stack::detect(root),
@@ -387,6 +396,83 @@ fn non_empty(value: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|v| !v.is_empty())
         .map(str::to_string)
+}
+
+/// The log with every amended decision replaced by its newest amendment.
+pub struct Resolved {
+    /// The amended decision keeps its own id and timestamp, so it sits where
+    /// it was first written; its text and privacy are the newest
+    /// amendment's. The amendments themselves are gone.
+    pub events: Vec<Event>,
+    /// Every decision id, original or amendment, mapped to the id of the
+    /// original decision its chain of amendments started from.
+    pub roots: BTreeMap<String, String>,
+}
+
+/// Fold amendments into the decisions they correct. An amendment of an
+/// unknown decision stands as a decision of its own; a chain of amendments
+/// resolves to the last one recorded.
+pub fn resolve_amendments(events: Vec<Event>) -> Resolved {
+    let mut roots: BTreeMap<String, String> = BTreeMap::new();
+    let mut newest: BTreeMap<String, usize> = BTreeMap::new();
+    for (i, event) in events.iter().enumerate() {
+        if event.kind != EventKind::Decision {
+            continue;
+        }
+        let amends = event
+            .payload_as::<DecisionPayload>()
+            .ok()
+            .and_then(|p| p.amends);
+        let root = amends
+            .and_then(|target| roots.get(&target).cloned())
+            .unwrap_or_else(|| event.id.clone());
+        roots.insert(event.id.clone(), root.clone());
+        newest.insert(root, i);
+    }
+    let latest: BTreeMap<String, Event> = newest
+        .iter()
+        .filter_map(|(root, i)| events.get(*i).map(|e| (root.clone(), e.clone())))
+        .collect();
+    let out = events
+        .into_iter()
+        .filter_map(|mut event| {
+            if event.kind != EventKind::Decision {
+                return Some(event);
+            }
+            let root = roots.get(&event.id)?;
+            if *root != event.id {
+                return None;
+            }
+            if let Some(last) = latest.get(root).filter(|l| l.id != event.id) {
+                if let Ok(mut p) = last.payload_as::<DecisionPayload>() {
+                    p.amends = None;
+                    event.payload = serde_json::to_value(p).ok()?;
+                }
+            }
+            Some(event)
+        })
+        .collect();
+    Resolved { events: out, roots }
+}
+
+/// The decisions currently pinned, by the id of the original decision, in the
+/// order they were first pinned. A later `pinned: false` removes one.
+pub fn pinned_order(events: &[Event], roots: &BTreeMap<String, String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for event in events.iter().filter(|e| e.kind == EventKind::Pin) {
+        let Ok(pin) = event.payload_as::<PinPayload>() else {
+            continue;
+        };
+        let target = roots.get(&pin.target_id).cloned().unwrap_or(pin.target_id);
+        if pin.pinned {
+            if !out.contains(&target) {
+                out.push(target);
+            }
+        } else {
+            out.retain(|id| *id != target);
+        }
+    }
+    out
 }
 
 /// The ids of the AI sessions the author hid before publishing.

@@ -10,7 +10,7 @@
     "seq": { "type": "integer", "minimum": 1 },
     "id": { "type": "string", "format": "uuid" },
     "ts": { "type": "string", "format": "date-time" },
-    "kind": { "enum": ["intent", "commit", "ai_session", "decision", "pattern", "summary", "hide"] },
+    "kind": { "enum": ["intent", "commit", "ai_session", "decision", "pattern", "summary", "hide", "pin"] },
     "commit_sha": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
     "prev_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
@@ -22,7 +22,8 @@
         { "$ref": "#/$defs/decision" },
         { "$ref": "#/$defs/pattern" },
         { "$ref": "#/$defs/summary" },
-        { "$ref": "#/$defs/hide" }
+        { "$ref": "#/$defs/hide" },
+        { "$ref": "#/$defs/pin" }
       ]
     }
   },
@@ -102,7 +103,8 @@
       "additionalProperties": false,
       "properties": {
         "text": { "type": "string", "minLength": 1 },
-        "private": { "type": "boolean" }
+        "private": { "type": "boolean" },
+        "amends": { "type": "string", "format": "uuid", "description": "Id of the earlier decision this one corrects. Optional; absent on decisions recorded before amending existed." }
       }
     },
     "pattern": {
@@ -134,6 +136,15 @@
       "properties": {
         "target_kind": { "enum": ["ai_session"] },
         "target_id": { "type": "string", "format": "uuid" }
+      }
+    },
+    "pin": {
+      "type": "object",
+      "required": ["target_id", "pinned"],
+      "additionalProperties": false,
+      "properties": {
+        "target_id": { "type": "string", "format": "uuid" },
+        "pinned": { "type": "boolean" }
       }
     }
   }

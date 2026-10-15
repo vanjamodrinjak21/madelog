@@ -429,6 +429,7 @@ mod tests {
         let payload = Payload::Decision(DecisionPayload {
             text: text.into(),
             private,
+            amends: None,
         });
         event(ts, EventKind::Decision, payload.to_value())
     }

@@ -34,6 +34,11 @@ Once a repo has `.madelog/`, madelog runs on its own. Do not ask before recordin
 | The page as stamped JSON with status | `madelog export --report [file]` |
 | Set the project status | `madelog config set project.status active\|paused\|delivered\|archived` (empty = derived) |
 | Hide one AI session from the page | `madelog hide <event_id>` |
+| Correct a recorded decision | `madelog note --amends <decision_id> "corrected sentence"` (appends; the page shows the newest) |
+| Choose which decisions lead the sheet | `madelog pin <decision_id>`, `madelog pin --remove <decision_id>` |
+| Find event ids | `madelog log --json` (ids are time-based, so give the full id) |
+| Markdown for applications | `madelog export --report --md` |
+| README badge (published repos) | `![madelog](https://api.madelog.app/p/<slug>/badge.svg)` linking to the page |
 | Render locally | `madelog publish --local`, then `madelog open` |
 | Put it online | `madelog publish --yes` (prints the link; Pro also prints a PDF link) |
 | Take it down | `madelog unpublish` |
@@ -43,7 +48,7 @@ Once a repo has `.madelog/`, madelog runs on its own. Do not ask before recordin
 
 - **Never publish, unpublish, or run `madelog pro` without the user saying so.** Publishing sends the page to a public server. Recording notes needs no permission.
 - **Never invent numbers.** Everything on the page comes from the log. If a figure looks wrong, find the cause in the events (`madelog log --json`) and fix the code or the record. Do not edit the page HTML by hand.
-- **Never edit `.madelog/log.db`.** The chain is append-only; a change breaks `madelog verify` and the server's root no longer matches. To correct something, append: a new `note`, a new `init --what …` intent, or `hide`.
+- **Never edit `.madelog/log.db`.** The chain is append-only; a change breaks `madelog verify` and the server's root no longer matches. To correct something, append: `note --amends`, a new `init --what …` intent, `pin`, or `hide`. Fix a typo in a decision with `--amends` when the user asks; never on your own.
 - **Never commit `.madelog/`.** It is excluded in `.git/info/exclude`.
 - Decisions are one sentence, specific, and say what was chosen over what. No marketing words.
 

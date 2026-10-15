@@ -74,6 +74,7 @@ fn samples() -> Vec<Payload> {
         Payload::Decision(DecisionPayload {
             text: "chose sqlite".into(),
             private: false,
+            amends: None,
         }),
         Payload::Pattern(PatternPayload {
             pattern: PatternKind::FixAfterAi,
@@ -90,6 +91,15 @@ fn samples() -> Vec<Payload> {
         Payload::Hide(HidePayload {
             target_kind: "ai_session".into(),
             target_id: "01a0b11f-013b-7519-9e6f-d32722ad0007".into(),
+        }),
+        Payload::Pin(PinPayload {
+            target_id: "01a0b11f-013b-7519-9e6f-d32722ad0007".into(),
+            pinned: true,
+        }),
+        Payload::Decision(DecisionPayload {
+            text: "chose postgres after all".into(),
+            private: false,
+            amends: Some("01a0b11f-013b-7519-9e6f-d32722ad0007".into()),
         }),
     ]
 }
