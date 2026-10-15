@@ -183,3 +183,50 @@ fn doctor_reports_on_every_ai_tool_and_on_the_recording_itself() {
     assert!(sessions.contains("recording"), "{sessions}");
     assert!(sessions.trim_start().starts_with("ok"), "{sessions}");
 }
+
+fn add_session(repo: &TestRepo, sha: &str) {
+    use madelog::event::{AiSessionPayload, Payload};
+    let store = madelog::store::Store::open(&repo.path(".madelog/log.db")).unwrap();
+    store
+        .append_payload(
+            Some(sha),
+            &Payload::AiSession(AiSessionPayload {
+                tool: "claude-code".into(),
+                model: None,
+                session_id: "sess-1".into(),
+                prompt: None,
+                response_excerpt: None,
+                files: vec![],
+                accepted: true,
+            }),
+        )
+        .unwrap();
+}
+
+#[test]
+fn doctor_coverage_says_so_when_no_sessions_are_recorded() {
+    let repo = healthy_repo();
+    let out = madelog::run_capture(repo.root(), &["doctor"]).unwrap();
+    assert!(
+        out.contains("ok    coverage") && out.contains("no AI sessions recorded"),
+        "{out}"
+    );
+}
+
+#[test]
+fn doctor_coverage_warns_when_few_commits_carry_a_session() {
+    let repo = healthy_repo();
+    for i in 0..3 {
+        repo.write("b.rs", &format!("// b{i}\n"));
+        repo.commit_all(&format!("more {i}"));
+        madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    }
+    let sha = repo.commit_all("anchor");
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    add_session(&repo, &sha);
+
+    let out = madelog::run_capture(repo.root(), &["doctor"]).unwrap();
+    assert!(out.contains("warn  coverage"), "{out}");
+    assert!(out.contains("only 1 of 5 commits"), "{out}");
+    assert!(!out.contains("FAIL"), "{out}");
+}

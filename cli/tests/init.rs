@@ -173,3 +173,37 @@ fn init_creates_a_device_key_with_owner_only_permissions() {
     assert_eq!(key.public_key_hex().len(), 64);
     assert_eq!(key.sign(b"hello").len(), 64);
 }
+
+#[test]
+fn init_warns_about_a_vague_headline_but_records_it() {
+    let repo = init_repo();
+    isolate_device_key();
+    let out = madelog::run_capture(
+        repo.root(),
+        &["init", "--what", "pwa app", "--for-whom", "x", "--yes"],
+    )
+    .unwrap();
+    assert!(
+        out.contains("note: \"pwa app\" will be the headline recruiters read first"),
+        "{out}"
+    );
+    let intent: IntentPayload = serde_json::from_value(events(&repo)[0].payload.clone()).unwrap();
+    assert_eq!(intent.what, "pwa app");
+}
+
+#[test]
+fn init_is_quiet_about_a_good_headline() {
+    let repo = init_repo();
+    isolate_device_key();
+    let out = madelog::run_capture(
+        repo.root(),
+        &[
+            "init",
+            "--what",
+            "A guest photo wall for live events, built as a PWA",
+            "--yes",
+        ],
+    )
+    .unwrap();
+    assert!(!out.contains("note:"), "{out}");
+}

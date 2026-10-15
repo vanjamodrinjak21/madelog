@@ -204,6 +204,9 @@ pub struct ExportArgs {
     /// the export time.
     #[arg(long)]
     pub report: bool,
+    /// With --report: write Markdown to paste into an application instead of JSON.
+    #[arg(long, requires = "report")]
+    pub md: bool,
 }
 
 #[derive(Debug, Args)]
@@ -338,7 +341,9 @@ pub fn dispatch(cli: Cli, ctx: &mut Ctx<'_>) -> Result<()> {
         Command::Open(args) => commands::open::run(ctx, args.print),
         Command::Log(args) => commands::log::run(ctx, args.json),
         Command::Verify => commands::verify::run(ctx),
-        Command::Export(args) => commands::export::run(ctx, args.path.as_deref(), args.report),
+        Command::Export(args) => {
+            commands::export::run(ctx, args.path.as_deref(), args.report, args.md)
+        }
         Command::Hide(args) => commands::hide::run(ctx, &args.event_id),
         Command::Config(args) => commands::config::run(ctx, args.command),
         Command::Publish(args) => commands::publish::run(

@@ -169,6 +169,12 @@ pub fn run(ctx: &mut Ctx<'_>, opts: Options) -> Result<()> {
     };
 
     write_intent_md(&madelog_dir, &intent)?;
+    if is_vague_headline(&intent.what) {
+        ctx.say(&format!(
+            "note: \"{}\" will be the headline recruiters read first. A sentence like \"A guest photo wall for live events, built as a PWA\" reads better; run `madelog init --what \"...\"` to replace it.",
+            intent.what
+        ))?;
+    }
     store.append_payload(
         repo.head_sha()?.as_deref(),
         &Payload::Intent(intent.clone()),
@@ -228,6 +234,13 @@ fn latest_intent(madelog_dir: &Path) -> Result<Option<IntentPayload>> {
     }
     let found = Store::open(&db)?.last_of_kind(crate::event::EventKind::Intent)?;
     Ok(found.and_then(|e| e.payload_as::<IntentPayload>().ok()))
+}
+
+/// A headline too thin to read well: under four words or twenty characters.
+/// Only ever a warning; the text is recorded as given.
+pub fn is_vague_headline(what: &str) -> bool {
+    let what = what.trim();
+    what.split_whitespace().count() < 4 || what.chars().count() < 20
 }
 
 /// A flag that was given, trimmed. `--what ""` counts as an answer: it clears
@@ -448,6 +461,15 @@ pub fn which(name: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn short_headlines_are_vague() {
+        assert!(is_vague_headline("pwa app"));
+        assert!(is_vague_headline("Pwa app"));
+        assert!(is_vague_headline(""));
+        assert!(is_vague_headline("a b c d"));
+        assert!(!is_vague_headline("A guest photo wall for live events"));
+    }
 
     #[test]
     fn a_new_hook_gets_a_shebang_and_our_line() {

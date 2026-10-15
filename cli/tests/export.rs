@@ -129,3 +129,21 @@ fn log_json_lists_every_event() {
     assert!(human.contains("intent"), "{human}");
     assert!(human.contains("one"), "{human}");
 }
+
+#[test]
+fn export_report_md_is_markdown_and_needs_report() {
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("a.txt", "one\n");
+    repo.commit_all("first");
+    madelog::run_in(repo.root(), &["hook", "post-commit"]).unwrap();
+    madelog::run_in(repo.root(), &["note", "wrote it down"]).unwrap();
+
+    let out = madelog::run_capture(repo.root(), &["export", "--report", "--md"]).unwrap();
+    assert!(out.starts_with("# "), "{out}");
+    assert!(out.contains("## What I decided"), "{out}");
+    assert!(out.contains("## Record"), "{out}");
+    assert!(out.contains("by madelog._"), "{out}");
+
+    assert!(madelog::run_capture(repo.root(), &["export", "--md"]).is_err());
+}

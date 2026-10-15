@@ -84,6 +84,7 @@ pub fn run(ctx: &mut Ctx<'_>, fix: bool) -> Result<()> {
     check_exclude(&mut report, &git_dir, fix);
     check_device_key(&mut report, fix);
     check_ai_tools(&mut report, &root);
+    check_coverage(&mut report, &root);
     check_ollama(&mut report, &config);
     check_server(&mut report, &config);
 
@@ -388,6 +389,46 @@ fn check_ai_tools(report: &mut Report, root: &Path) {
     );
 }
 
+/// How many of the page's commits carry a recorded AI session. Silent when
+/// there is no log to read or nothing committed yet: there is nothing to say.
+fn check_coverage(report: &mut Report, root: &Path) {
+    if !root.join(".madelog").join("log.db").exists() {
+        return;
+    }
+    let Ok(ctx) = crate::page::build_context(root, None) else {
+        return;
+    };
+    if ctx.stats.commits == 0 {
+        return;
+    }
+    let (verdict, detail) = coverage_verdict(ctx.ratio.as_ref());
+    report.add(verdict, "coverage", detail);
+}
+
+fn coverage_verdict(ratio: Option<&crate::page::Ratio>) -> (Verdict, String) {
+    let Some(ratio) = ratio else {
+        return (
+            Verdict::Ok,
+            "no AI sessions recorded; the page says so instead of guessing".to_string(),
+        );
+    };
+    let covered = ratio.covered_commits;
+    let total = covered + ratio.uncovered_commits;
+    if total > 0 && covered * 2 >= total {
+        (
+            Verdict::Ok,
+            format!("{covered} of {total} commits carry a recorded AI session"),
+        )
+    } else {
+        (
+            Verdict::Warn,
+            format!(
+                "only {covered} of {total} commits carry a recorded AI session; run `madelog capture` on a commit to see why sessions were missed"
+            ),
+        )
+    }
+}
+
 fn check_ollama(report: &mut Report, config: &Config) {
     if config.llm.provider == "none" {
         report.add(
@@ -494,6 +535,33 @@ mod tests {
             1,
             "{body}"
         );
+    }
+
+    fn ratio(covered: u64, uncovered: u64) -> crate::page::Ratio {
+        crate::page::Ratio {
+            covered_commits: covered,
+            uncovered_commits: uncovered,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn coverage_is_ok_with_no_sessions_and_with_half_covered() {
+        let (v, d) = coverage_verdict(None);
+        assert_eq!(v, Verdict::Ok);
+        assert!(d.starts_with("no AI sessions recorded"), "{d}");
+
+        let (v, d) = coverage_verdict(Some(&ratio(2, 2)));
+        assert_eq!(v, Verdict::Ok);
+        assert_eq!(d, "2 of 4 commits carry a recorded AI session");
+    }
+
+    #[test]
+    fn coverage_warns_below_half() {
+        let (v, d) = coverage_verdict(Some(&ratio(1, 3)));
+        assert_eq!(v, Verdict::Warn);
+        assert!(d.starts_with("only 1 of 4 commits"), "{d}");
+        assert!(d.contains("madelog capture"), "{d}");
     }
 
     #[test]
