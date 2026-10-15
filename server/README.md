@@ -102,8 +102,9 @@ cannot be verified must not be accepted.
 | POST | `/v1/devices` | `{public_key}` | `{device_id}` — idempotent on the public key |
 | GET | `/v1/devices/{id}` | — | `{device_id, plan, plan_source?, plan_until?}` |
 | POST | `/v1/devices/{id}/plan` | `{license_key, signature}` | the same; 403 `license_rejected`, 502 `licensing_unavailable`, 503 `not_configured` |
-| POST | `/v1/pages` | `{device_id, slug?, html, root, first_ts, last_ts, published_ts, signature}` | `{slug, url, verify_url, received_at, plan, pdf_url?}` |
+| POST | `/v1/pages` | `{device_id, slug?, html, root, first_ts, last_ts, published_ts, signature}` | `{slug, url, verify_url, badge_url, received_at, plan, pdf_url?}` |
 | GET | `/p/{slug}` | — | the stored html |
+| GET | `/p/{slug}/badge.svg` | — | a small monochrome SVG badge, `verified · <first 8 hex of root>`, for READMEs; 404 for unknown or deleted pages |
 | GET | `/p/{slug}.pdf` | — | the page as a PDF, Pro only: 402 `pro_required`, 503 `renderer_unavailable` |
 | GET | `/v1/verify/{slug}` | — | `{slug, root, first_ts, last_ts, received_at, device_id}` |
 | DELETE | `/v1/pages/{slug}` | `{device_id, signature}` | `{slug, deleted}` |

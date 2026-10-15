@@ -35,6 +35,7 @@ type publishResponse struct {
 	Slug       string    `json:"slug"`
 	URL        string    `json:"url"`
 	VerifyURL  string    `json:"verify_url"`
+	BadgeURL   string    `json:"badge_url"`
 	ReceivedAt time.Time `json:"received_at"`
 	// Plan is the device's plan; PDFURL is set only on Pro.
 	Plan   string `json:"plan"`
@@ -154,6 +155,7 @@ func (a *api) handlePublishPage(w http.ResponseWriter, r *http.Request) {
 		Slug:       page.Slug,
 		URL:        a.pageURL(page.Slug),
 		VerifyURL:  a.verifyURL(page.Slug),
+		BadgeURL:   a.badgeURL(page.Slug),
 		ReceivedAt: page.ReceivedAt.UTC(),
 		Plan:       dev.Plan,
 	}

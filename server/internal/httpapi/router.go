@@ -60,6 +60,9 @@ type api struct {
 	activator licensing.Activator
 }
 
+// badgeURL is the public address of a page's README badge.
+func (a *api) badgeURL(slug string) string { return a.baseURL + "/p/" + slug + "/badge.svg" }
+
 // pdfURL is the public address of a page's PDF.
 func (a *api) pdfURL(slug string) string { return a.baseURL + "/p/" + slug + ".pdf" }
 
@@ -106,6 +109,8 @@ func NewRouter(s store.Store, cfg Config) (http.Handler, error) {
 	r.Head("/healthz", a.handleHealthz)
 	r.Get("/p/{slug}", a.handleServePage)
 	r.Head("/p/{slug}", a.handleServePage)
+	r.Get("/p/{slug}/badge.svg", a.handleBadge)
+	r.Head("/p/{slug}/badge.svg", a.handleBadge)
 
 	r.Route("/v1", func(r chi.Router) {
 		r.Post("/devices", a.handleCreateDevice)
