@@ -121,7 +121,7 @@ jobs:
         if: hashFiles('landing/pnpm-lock.yaml') != ''
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
           cache-dependency-path: landing/pnpm-lock.yaml
 
