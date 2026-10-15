@@ -315,3 +315,42 @@ fn the_new_hooks_never_fail_without_madelog_init() {
     )
     .expect("post-rewrite must not fail");
 }
+
+#[test]
+fn hook_nudges_when_a_commit_adds_a_dependency() {
+    use madelog::commands::hook::dependency_prompt;
+    use madelog::gitrepo::Repo;
+
+    let repo = init_repo();
+    init_madelog(&repo);
+    repo.write("package.json", "{\"dependencies\":{\"a\":\"1\"}}\n");
+    let root = repo.commit_all("chore: start");
+    let git = Repo::discover(repo.root()).unwrap();
+    assert_eq!(
+        dependency_prompt(&git, &root),
+        None,
+        "root commit stays quiet"
+    );
+
+    repo.write(
+        "package.json",
+        "{\"dependencies\":{\"a\":\"1\",\"drizzle-orm\":\"1\",\"better-auth\":\"1\"}}\n",
+    );
+    let sha = repo.commit_all("feat: storage");
+    let line = dependency_prompt(&git, &sha).expect("a nudge");
+    assert!(
+        line.starts_with("madelog: added better-auth, drizzle-orm. Write down why"),
+        "{line}"
+    );
+
+    // The hook prints it on stderr, never on stdout.
+    let out = madelog::run_capture(repo.root(), &["hook", "post-commit"]).unwrap();
+    assert!(!out.contains("Write down why"), "{out}");
+
+    repo.write(
+        "package.json",
+        "{\"dependencies\":{\"a\":\"1\",\"drizzle-orm\":\"1\",\"better-auth\":\"1\",\"zod\":\"3\"}}\n",
+    );
+    let sha = repo.commit_all("feat: add zod for validation");
+    assert_eq!(dependency_prompt(&git, &sha), None, "message names it");
+}

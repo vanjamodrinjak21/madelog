@@ -227,3 +227,16 @@ fn an_old_decision_payload_serialises_without_amends() {
     };
     assert!(serde_json::to_value(d).unwrap().get("amends").is_none());
 }
+
+#[test]
+fn ids_resolve_by_prefix_or_eight_char_suffix() {
+    let repo = repo_with_three();
+    let gamma = id_of(&repo, "gamma");
+    let hex = gamma.replace('-', "");
+    let suffix = hex[hex.len() - 8..].to_string();
+    madelog::run_in(repo.root(), &["pin", &suffix]).unwrap();
+    let said = madelog::run_capture(repo.root(), &["pin", &suffix]).unwrap();
+    assert!(said.contains("already pinned"), "{said}");
+    note(&repo, &["--amends", &suffix, "gamma, corrected"]);
+    assert!(err(&repo, &["pin", "abc"]).contains("no decision"));
+}

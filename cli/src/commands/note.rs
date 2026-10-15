@@ -66,28 +66,54 @@ fn resolve(repo: &Repo, rev: &str) -> Result<String> {
     Ok(commit.id().to_string())
 }
 
-/// The decision event `id` names: its full id, or a prefix of exactly one
-/// decision's id. Anything else is an error, so a correction can never land
-/// on the wrong sentence.
-pub(crate) fn find_decision(store: &Store, id: &str) -> Result<Event> {
-    let id = id.trim();
-    if id.is_empty() {
-        bail!("name a decision by its id; `madelog log` lists them");
+/// The last 8 hex characters of an event id, dashes stripped: what
+/// `madelog log` shows. Ids are UUIDv7, so their prefixes are timestamps and
+/// collide; the tail is random.
+pub(crate) fn short_id(id: &str) -> String {
+    let hex: String = id.chars().filter(|c| *c != '-').collect();
+    hex[hex.len().saturating_sub(8)..].to_string()
+}
+
+/// The event `reference` names: a full id, a unique prefix, or a unique
+/// suffix of 8 or more hex characters (what `madelog log` prints). Only
+/// events accepted by `accept` are candidates for a prefix or suffix match;
+/// a full id matches whatever it is, so the caller can say what it found.
+pub(crate) fn find_event(
+    store: &Store,
+    reference: &str,
+    noun: &str,
+    accept: impl Fn(&Event) -> bool,
+) -> Result<Event> {
+    let reference = reference.trim();
+    if reference.is_empty() {
+        bail!("name a {noun} by its id; `madelog log` lists them");
     }
-    if let Some(event) = store.by_id(id)? {
-        if event.kind != EventKind::Decision {
-            bail!("event `{id}` is a {}, not a decision", event.kind);
-        }
+    if let Some(event) = store.by_id(reference)? {
         return Ok(event);
     }
+    let tail = reference.to_ascii_lowercase().replace('-', "");
     let mut matches: Vec<Event> = store
         .all()?
         .into_iter()
-        .filter(|e| e.kind == EventKind::Decision && e.id.starts_with(id))
+        .filter(|e| accept(e))
+        .filter(|e| {
+            e.id.starts_with(reference)
+                || (tail.len() >= 8 && e.id.replace('-', "").ends_with(&tail))
+        })
         .collect();
     match matches.len() {
-        0 => bail!("no decision with id `{id}` in this log"),
+        0 => bail!("no {noun} with id `{reference}` in this log"),
         1 => Ok(matches.remove(0)),
-        n => bail!("`{id}` matches {n} decisions; give more of the id"),
+        n => bail!("`{reference}` matches {n} {noun}s; give more of the id"),
     }
+}
+
+/// The decision event `id` names (see [`find_event`]). Anything else is an
+/// error, so a correction can never land on the wrong sentence.
+pub(crate) fn find_decision(store: &Store, id: &str) -> Result<Event> {
+    let event = find_event(store, id, "decision", |e| e.kind == EventKind::Decision)?;
+    if event.kind != EventKind::Decision {
+        bail!("event `{}` is a {}, not a decision", id.trim(), event.kind);
+    }
+    Ok(event)
 }

@@ -128,6 +128,16 @@ fn log_json_lists_every_event() {
     let human = madelog::run_capture(repo.root(), &["log"]).unwrap();
     assert!(human.contains("intent"), "{human}");
     assert!(human.contains("one"), "{human}");
+
+    // Every line carries the last 8 hex chars of the event id.
+    let events: Vec<serde_json::Value> = serde_json::from_str(&out).unwrap();
+    for e in &events {
+        let id = e["id"].as_str().unwrap().replace('-', "");
+        assert!(
+            human.contains(&format!("  {}  ", &id[id.len() - 8..])),
+            "{human}"
+        );
+    }
 }
 
 #[test]

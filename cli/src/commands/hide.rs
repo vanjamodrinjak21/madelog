@@ -3,14 +3,15 @@
 
 use anyhow::{bail, Result};
 
+use crate::commands::note::find_event;
 use crate::event::{EventKind, HidePayload, Payload};
 use crate::Ctx;
 
 pub fn run(ctx: &mut Ctx<'_>, event_id: &str) -> Result<()> {
     let store = ctx.open_store()?;
-    let Some(target) = store.by_id(event_id)? else {
-        bail!("no event with id `{event_id}` in this log");
-    };
+    let target = find_event(&store, event_id, "event", |e| {
+        e.kind == EventKind::AiSession
+    })?;
     if target.kind != EventKind::AiSession {
         bail!(
             "only ai_session events can be hidden; event `{event_id}` is a {}",

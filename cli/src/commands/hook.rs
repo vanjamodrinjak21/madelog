@@ -359,7 +359,16 @@ fn record_head(ctx: &mut Ctx<'_>) -> Result<()> {
         return Ok(());
     };
     let changed = recorder.record(&sha, Gap::SinceLastRecord)?;
-    finish(&repo, &recorder, changed)
+    let outcome = finish(&repo, &recorder, changed);
+    if changed {
+        // A prompt is a courtesy: whatever goes wrong in finding one is silent.
+        if let Some(line) = dependency_prompt(&repo, &sha) {
+            // stderr, like every other hook message: tools that drive
+            // `git commit` read its stdout.
+            eprintln!("{line}");
+        }
+    }
+    outcome
 }
 
 fn record_rewritten(ctx: &mut Ctx<'_>, new_shas: &[String]) -> Result<()> {
@@ -375,6 +384,153 @@ fn record_rewritten(ctx: &mut Ctx<'_>, new_shas: &[String]) -> Result<()> {
         changed |= recorder.record(sha, Gap::SinceLastRecord)?;
     }
     finish(&repo, &recorder, changed)
+}
+
+/// Which manifest a file is, by its name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ManifestKind {
+    PackageJson,
+    GoMod,
+    CargoToml,
+}
+
+impl ManifestKind {
+    fn of(path: &str) -> Option<ManifestKind> {
+        if path
+            .split('/')
+            .any(|p| p == "node_modules" || p == "vendor")
+        {
+            return None;
+        }
+        match path.rsplit('/').next()? {
+            "package.json" => Some(ManifestKind::PackageJson),
+            "go.mod" => Some(ManifestKind::GoMod),
+            "Cargo.toml" => Some(ManifestKind::CargoToml),
+            _ => None,
+        }
+    }
+}
+
+/// Every dependency name a manifest declares. Unparseable input declares none.
+fn declared_dependencies(text: &str, kind: ManifestKind) -> Vec<String> {
+    match kind {
+        ManifestKind::PackageJson => {
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
+                return Vec::new();
+            };
+            ["dependencies", "devDependencies"]
+                .iter()
+                .filter_map(|k| v.get(k)?.as_object())
+                .flat_map(|o| o.keys().cloned())
+                .collect()
+        }
+        ManifestKind::CargoToml => {
+            let Ok(v) = text.parse::<toml::Table>() else {
+                return Vec::new();
+            };
+            ["dependencies", "dev-dependencies"]
+                .iter()
+                .filter_map(|k| v.get(*k)?.as_table())
+                .flat_map(|t| t.keys().cloned())
+                .collect()
+        }
+        ManifestKind::GoMod => {
+            let mut names = Vec::new();
+            let mut in_block = false;
+            for raw in text.lines() {
+                let line = raw.trim();
+                if in_block {
+                    if line.starts_with(')') {
+                        in_block = false;
+                    } else if let Some(n) = go_require(line) {
+                        names.push(n);
+                    }
+                } else if let Some(rest) = line.strip_prefix("require") {
+                    let rest = rest.trim();
+                    if rest.starts_with('(') {
+                        in_block = true;
+                    } else if let Some(n) = go_require(rest) {
+                        names.push(n);
+                    }
+                }
+            }
+            names
+        }
+    }
+}
+
+/// The module on one `go.mod` require line; `// indirect` ones are not choices.
+fn go_require(line: &str) -> Option<String> {
+    if line.is_empty() || line.starts_with("//") || line.contains("// indirect") {
+        return None;
+    }
+    let mut parts = line.split_whitespace();
+    let name = parts.next()?;
+    parts.next()?;
+    Some(name.to_string())
+}
+
+/// Dependencies in `new` that `old` did not declare, in the manifest's order.
+/// `old` is `None` when the manifest did not exist before.
+pub fn added_dependencies(old: Option<&str>, new: &str, kind: ManifestKind) -> Vec<String> {
+    let before = old
+        .map(|o| declared_dependencies(o, kind))
+        .unwrap_or_default();
+    let mut added: Vec<String> = Vec::new();
+    for name in declared_dependencies(new, kind) {
+        if !before.contains(&name) && !added.contains(&name) {
+            added.push(name);
+        }
+    }
+    added
+}
+
+fn blob_text(repo: &Repo, tree: &git2::Tree<'_>, path: &str) -> Option<String> {
+    let entry = tree.get_path(std::path::Path::new(path)).ok()?;
+    let blob = repo.inner().find_blob(entry.id()).ok()?;
+    std::str::from_utf8(blob.content()).ok().map(str::to_string)
+}
+
+/// The one-line nudge for a commit that added dependencies, or `None`.
+/// Silent for a root commit, for a commit whose message names every addition,
+/// and for anything it cannot read.
+pub fn dependency_prompt(repo: &Repo, sha: &str) -> Option<String> {
+    let commit = repo
+        .inner()
+        .find_commit(git2::Oid::from_str(sha).ok()?)
+        .ok()?;
+    let parent = commit.parent(0).ok()?;
+    let (old_tree, new_tree) = (parent.tree().ok()?, commit.tree().ok()?);
+    let diff = repo
+        .inner()
+        .diff_tree_to_tree(Some(&old_tree), Some(&new_tree), None)
+        .ok()?;
+    let mut added: Vec<String> = Vec::new();
+    for delta in diff.deltas() {
+        let Some(path) = delta.new_file().path().and_then(|p| p.to_str()) else {
+            continue;
+        };
+        let Some(kind) = ManifestKind::of(path) else {
+            continue;
+        };
+        let Some(new) = blob_text(repo, &new_tree, path) else {
+            continue;
+        };
+        let old = blob_text(repo, &old_tree, path);
+        for name in added_dependencies(old.as_deref(), &new, kind) {
+            if !added.contains(&name) {
+                added.push(name);
+            }
+        }
+    }
+    let message = commit.message().unwrap_or("").to_lowercase();
+    if added.is_empty() || added.iter().all(|n| message.contains(&n.to_lowercase())) {
+        return None;
+    }
+    let names = added.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
+    Some(format!(
+        "madelog: added {names}. Write down why: madelog note \"Chose …\""
+    ))
 }
 
 /// Analysis, summaries and the page. Never fatal, and never on stdout: a git
@@ -494,6 +650,56 @@ pub fn ai_session_state(repo_root: &Path) -> (bool, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn package_json_additions_are_new_keys_in_either_table() {
+        let old = r#"{"dependencies":{"a":"1"},"devDependencies":{"t":"1"}}"#;
+        let new = r#"{"dependencies":{"a":"2","drizzle-orm":"1"},"devDependencies":{"t":"1","vitest":"1"}}"#;
+        let k = ManifestKind::PackageJson;
+        assert_eq!(
+            added_dependencies(Some(old), new, k),
+            ["drizzle-orm", "vitest"]
+        );
+        assert!(added_dependencies(Some(new), new, k).is_empty());
+        assert!(added_dependencies(Some(old), "not json", k).is_empty());
+    }
+
+    #[test]
+    fn go_mod_additions_are_new_direct_requires() {
+        let old = "module x
+
+require (
+	a.com/a v1.0.0
+)
+";
+        let new = "module x
+
+require (
+	a.com/a v1.1.0
+	b.com/b v2.0.0
+	c.com/c v1.0.0 // indirect
+)
+require d.com/d v1.0.0
+";
+        assert_eq!(
+            added_dependencies(Some(old), new, ManifestKind::GoMod),
+            ["b.com/b", "d.com/d"]
+        );
+    }
+
+    #[test]
+    fn cargo_additions_are_new_keys_in_dependencies_and_dev_dependencies() {
+        let old = "[package]\nname = \"x\"\n[dependencies]\nserde = \"1\"\n";
+        let new = "[package]\nname = \"x\"\n[dependencies]\nserde = \"1\"\ntoml = { version = \"0.8\" }\n[dev-dependencies]\ntempfile = \"3\"\n";
+        assert_eq!(
+            added_dependencies(Some(old), new, ManifestKind::CargoToml),
+            ["toml", "tempfile"]
+        );
+        assert_eq!(
+            added_dependencies(None, new, ManifestKind::CargoToml),
+            ["serde", "toml", "tempfile"]
+        );
+    }
 
     #[test]
     fn rewrite_pairs_keep_the_new_sha_of_every_line() {

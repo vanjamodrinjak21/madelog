@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 
+use crate::commands::note::short_id;
 use crate::Ctx;
 
 pub fn run(ctx: &mut Ctx<'_>, json: bool) -> Result<()> {
@@ -25,8 +26,9 @@ pub fn run(ctx: &mut Ctx<'_>, json: bool) -> Result<()> {
             .map(|s| format!(" {}", &s[..7.min(s.len())]))
             .unwrap_or_default();
         ctx.say(&format!(
-            "{:>4}  {}  {:<10}{}  {}",
+            "{:>4}  {}  {}  {:<10}{}  {}",
             event.seq,
+            short_id(&event.id),
             event.ts,
             event.kind.as_str(),
             sha,
