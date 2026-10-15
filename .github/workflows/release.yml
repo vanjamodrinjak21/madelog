@@ -37,7 +37,7 @@ jobs:
             os: windows-latest
             binary: madelog.exe
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve the version
         shell: bash
@@ -87,7 +87,7 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "MADELOG_ASSET=$name.zip"
 
       - name: Upload the archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: madelog-${{ matrix.target }}
           path: ${{ env.MADELOG_ASSET }}
@@ -102,7 +102,7 @@ jobs:
       contents: write
     steps:
       - name: Collect the archives
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: madelog-*
@@ -115,7 +115,7 @@ jobs:
           sha256sum *.zip | tee SHA256SUMS
 
       - name: Create the GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: false
           generate_release_notes: true
