@@ -18,6 +18,7 @@ pub mod page;
 pub mod patterns;
 pub mod preview;
 pub mod publish;
+pub mod skill;
 pub mod store;
 pub mod summarize;
 

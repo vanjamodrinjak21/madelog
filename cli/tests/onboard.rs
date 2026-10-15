@@ -258,3 +258,30 @@ fn a_per_project_install_makes_the_hook_call_its_own_binary() {
         "a per-project install stays out of the machine's git config"
     );
 }
+
+#[test]
+fn onboard_installs_the_claude_skill_when_claude_code_is_here() {
+    let (_lock, _machine) = isolate_machine();
+    let repo = init_repo();
+    let claude = tempfile::TempDir::new().unwrap();
+    std::env::set_var("MADELOG_CLAUDE_HOME", claude.path());
+
+    let out = madelog::run_capture(repo.root(), &["onboard", "--yes"]).unwrap();
+    let skill = claude.path().join("skills/madelog/SKILL.md");
+    assert!(out.contains("Claude Code skill installed"), "{out}");
+    assert_eq!(
+        std::fs::read_to_string(&skill).unwrap(),
+        madelog::skill::SKILL
+    );
+
+    let again = madelog::run_capture(repo.root(), &["onboard", "--yes"]).unwrap();
+    assert!(again.contains("Claude Code skill: up to date."), "{again}");
+
+    // No ~/.claude, no skill and no line about it.
+    let missing = claude.path().join("not-here");
+    std::env::set_var("MADELOG_CLAUDE_HOME", &missing);
+    let out = madelog::run_capture(repo.root(), &["onboard", "--yes"]).unwrap();
+    assert!(!out.contains("Claude Code skill"), "{out}");
+    assert!(!missing.exists());
+    reset_ai_tools();
+}

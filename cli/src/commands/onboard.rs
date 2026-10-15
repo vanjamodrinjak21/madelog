@@ -53,6 +53,7 @@ pub fn run(ctx: &mut Ctx<'_>, project: bool, yes: bool) -> Result<()> {
     ctx.blank()?;
 
     offer_global_hooks(ctx, project, yes)?;
+    claude_skill(ctx)?;
 
     let Some(workdir) = workdir else {
         return outside_a_repo(ctx);
@@ -221,6 +222,23 @@ fn offer_global_hooks(ctx: &mut Ctx<'_>, project: bool, yes: bool) -> Result<()>
         "  a repository with no .madelog/ is told once that `madelog init` exists".to_string()
     })?;
     Ok(())
+}
+
+/// Install the Claude Code skill when Claude Code is here. It only teaches
+/// Claude to record decisions and to leave publishing to you, so it needs no
+/// question; a failure to write it never stops onboarding.
+fn claude_skill(ctx: &mut Ctx<'_>) -> Result<()> {
+    match crate::skill::install() {
+        Ok(crate::skill::Installed::Written(path)) => ctx.say(&format!(
+            "Claude Code skill installed at {}: Claude now records your decisions with `madelog note`.",
+            path.display()
+        )),
+        Ok(crate::skill::Installed::Current(_)) => {
+            ctx.say("Claude Code skill: up to date.")
+        }
+        Ok(crate::skill::Installed::NoClaude) => Ok(()),
+        Err(e) => ctx.say(&format!("Claude Code skill not installed: {e:#}")),
+    }
 }
 
 fn outside_a_repo(ctx: &mut Ctx<'_>) -> Result<()> {
