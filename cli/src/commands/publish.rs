@@ -73,7 +73,15 @@ pub fn run_with(ctx: &mut Ctx<'_>, opts: Options, screen: &mut dyn Preview) -> R
     }
 
     // Step 4. Always render locally first: a failed upload still leaves a page.
-    let path = page::render_local(&root, None)?;
+    // A local render of a repository that already has a page online keeps
+    // that page's badge and links; the draft for an upload starts without
+    // them and is confirmed after the server answers.
+    let already_online = if opts.local {
+        crate::commands::refresh::published(&crate::config::Config::load(&config_path(&root))?)
+    } else {
+        None
+    };
+    let path = page::render_local(&root, already_online)?;
     ctx.say(&format!("page   {}", path.display()))?;
     if opts.local {
         ctx.say("not published. Run `madelog publish` without --local to put it online.")?;

@@ -368,6 +368,50 @@ section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
   a{text-decoration:none;color:inherit}
   .tl-axis,.tl-pt,.tl-pattern{animation:none !important;opacity:1 !important;stroke-dashoffset:0 !important}
 }
+
+/* the printed sheet: hidden on screen, the only thing on paper */
+.sheet{display:none}
+@media print{
+  @page{size:A4;margin:16mm 18mm}
+  main.page > *:not(.sheet){display:none !important}
+  .page{padding:0 !important;max-width:none}
+  .sheet{display:block;color:#111;font-family:var(--font-text);font-size:10pt;line-height:1.45}
+  .sheet h1,.sheet h2,.sheet p,.sheet dl,.sheet ol{margin:0}
+  .sh-top{display:flex;align-items:baseline;justify-content:space-between;gap:12pt;padding-bottom:6pt;border-bottom:1.2pt solid #111}
+  .sh-name{font-family:var(--font-display);font-size:28pt;font-weight:700;letter-spacing:-0.02em;line-height:1}
+  .sh-meta{display:flex;gap:10pt;align-items:baseline;font-size:9pt;color:#333;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .sh-status{font-family:var(--font-mono);font-size:8pt;text-transform:uppercase;letter-spacing:.08em;color:#111}
+  .sh-pitch{margin-top:12pt !important;font-family:var(--font-display);font-size:15pt;font-weight:600;line-height:1.25}
+  .sh-for{margin-top:2pt !important;font-size:9.5pt;color:#555}
+  .sh-figs{display:grid;grid-template-columns:repeat(4,1fr);margin-top:14pt !important;border-top:.6pt solid #999;border-bottom:.6pt solid #999}
+  .sh-figs > div{display:flex;flex-direction:column-reverse;padding:8pt 0 7pt 10pt;border-left:.6pt solid #ccc}
+  .sh-figs > div:first-child{border-left:0;padding-left:0}
+  .sh-figs dd{margin:0;font-family:var(--font-display);font-size:26pt;font-weight:600;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-0.02em}
+  .sh-figs dt{margin-top:4pt;font-family:var(--font-mono);font-size:8pt;color:#444}
+  .sh-caveat{margin-top:4pt !important;font-size:7.5pt;color:#555}
+  .sh-block{margin-top:14pt;padding-top:6pt;border-top:.5pt solid #ccc}
+  .sh-block h2{font-family:var(--font-mono);font-size:8pt;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:#444;margin-bottom:5pt !important}
+  .sh-block p{font-size:10.5pt}
+  .sh-decisions{padding:0;list-style:none;counter-reset:d}
+  .sh-decisions li{counter-increment:d;position:relative;padding:3.5pt 0 3.5pt 20pt;font-size:10pt;line-height:1.35;break-inside:avoid}
+  .sh-decisions li::before{content:counter(d,decimal-leading-zero);position:absolute;left:0;top:4.5pt;font-family:var(--font-mono);font-size:8pt;color:#777}
+  .sh-more{margin-top:3pt !important;padding-left:20pt;font-size:8.5pt !important;color:#555}
+  .sh-stack{display:flex;flex-wrap:wrap;gap:3pt 14pt}
+  .sh-stack span{white-space:nowrap}
+  .sh-foot{position:fixed;left:0;right:0;bottom:0;padding-top:5pt;border-top:.6pt solid #999;font-family:var(--font-mono);font-size:7.5pt;color:#555}
+  .sh-foot p + p{margin-top:2pt}
+  .sh-decisions a{color:inherit;text-decoration:none}
+  .sh-tl{margin-top:14pt}
+  .sh-hint{margin-left:10pt;text-transform:none;letter-spacing:0;color:#777}
+  .sh-svg{display:block;width:100%;height:auto;margin-top:2pt}
+  .sh-svg .tl-lane,.sh-svg .tl-day{fill:#555}
+  .sh-svg .tl-axis,.sh-svg .tl-tick{stroke:#999}
+  .sh-svg .tl-commit circle,.sh-svg .tl-decision path{fill:#111;stroke:#fff;stroke-width:1.5}
+  .sh-svg .tl-ai_session circle{fill:#fff;stroke:#111;stroke-width:1.6}
+  .sh-svg .tl-hidden circle{fill:none;stroke:#888}
+  .sh-legend{display:flex;gap:14pt;margin-top:2pt !important;font-family:var(--font-mono);font-size:7.5pt !important;color:#555}
+  .stamp{display:none !important}
+}
 </style>
 </head>
 <body>
@@ -562,6 +606,82 @@ section{padding-top:var(--space-16);scroll-margin-top:var(--space-6)}
 
   <!-- paper only: the stamp a printed or exported copy carries -->
   <p class="stamp" aria-hidden="true">{{ project.name }}{% if project.status %} · {{ project.status }}{% endif %}{% if badge.last_ts %} · record to {{ badge.last_ts | stamp }}{% endif %}{% if badge.published %} · published {{ badge.published.received_at | stamp }} · {{ badge.published.url | linkname }}{% else %} · unpublished local render{% endif %} · root {{ badge.root | cut(len=12) }}</p>
+
+  <!-- paper only: the one-page sheet a recruiter reads in six seconds -->
+  <section class="sheet" aria-hidden="true">
+    <header class="sh-top">
+      <h1 class="sh-name">{{ project.name }}</h1>
+      <p class="sh-meta">{% if project.status %}<span class="sh-status">{{ project.status }}</span>{% endif %}{% if verdict.span %}<span>{{ verdict.span }}{% if badge.last_ts %} {{ badge.last_ts | day | split(pat=" ") | last }}{% endif %}</span>{% endif %}</p>
+    </header>
+    <p class="sh-pitch">{{ verdict.headline }}</p>
+{%- if project.for_whom %}
+    <p class="sh-for">For {{ project.for_whom }}</p>
+{%- endif %}
+
+    <dl class="sh-figs">
+      <div><dt>commit{{ stats.commits | pluralize }}</dt><dd>{{ stats.commits }}</dd></div>
+      <div><dt>day{{ stats.days_active | pluralize }} active</dt><dd>{{ stats.days_active }}</dd></div>
+      <div><dt>decision{{ stats.decisions | pluralize }}</dt><dd>{{ stats.decisions }}</dd></div>
+{%- if ratio_view and ratio_view.total > 0 %}
+      <div><dt>AI-written lines{% if ratio.uncovered_commits %}*{% endif %}</dt><dd>{{ ratio_view.ai_pct }}%</dd></div>
+{%- else %}
+      <div><dt>AI session{{ stats.ai_sessions | pluralize }}</dt><dd>{{ stats.ai_sessions }}</dd></div>
+{%- endif %}
+    </dl>
+{%- if ratio and ratio.uncovered_commits %}
+    <p class="sh-caveat">* Over the {{ ratio.covered_commits }} of {{ ratio.covered_commits + ratio.uncovered_commits }} commits with a recorded AI session; the other {{ ratio.uncovered_commits }} are not attributed either way.</p>
+{%- endif %}
+
+{%- if verdict.sheet_decisions %}
+    <section class="sh-block">
+      <h2>What I decided</h2>
+      <ol class="sh-decisions">
+{%- for d in verdict.sheet_decisions %}
+        <li>{% if badge.published %}<a href="{{ badge.published.url }}#ev-{{ d.id }}">{{ d.text }}</a>{% else %}{{ d.text }}{% endif %}</li>
+{%- endfor %}
+      </ol>
+{%- if verdict.more_decisions %}
+      <p class="sh-more">+ {{ verdict.more_decisions }} more in the record</p>
+{%- endif %}
+    </section>
+{%- endif %}
+
+{%- if stack %}
+    <section class="sh-block">
+      <h2>Built with</h2>
+      <p class="sh-stack">{% for s in stack %}<span>{{ s }}</span>{% endfor %}</p>
+    </section>
+{%- endif %}
+
+    <section class="sh-block">
+      <h2>How AI was used</h2>
+      <p>{{ verdict.ai_line }}</p>
+    </section>
+
+{%- if timeline %}
+    <section class="sh-block sh-tl">
+      <h2>Timeline{% if badge.published %}<span class="sh-hint">every point opens its record online</span>{% endif %}</h2>
+      <svg class="sh-svg" viewBox="0 0 1000 150" role="img" aria-label="Timeline of commits, decisions and AI sessions">
+        <text x="64" y="46" class="tl-lane">decisions</text>
+        <text x="64" y="80" class="tl-lane">commits</text>
+        <text x="64" y="114" class="tl-lane">AI sessions</text>
+        <line x1="72" y1="76" x2="980" y2="76" class="tl-axis"/>
+{%- for t in ticks %}
+        <line x1="{{ t.cx }}" y1="72" x2="{{ t.cx }}" y2="80" class="tl-tick"/><text x="{{ t.cx }}" y="140" class="tl-day{% if t.major %} tl-day-major{% endif %}">{{ t.label }}</text>
+{%- endfor %}
+{%- for e in timeline %}
+        {% if badge.published %}<a href="{{ badge.published.url }}#ev-{{ e.id }}" class="tl-pt tl-{{ e.kind }}">{% else %}<g class="tl-pt tl-{{ e.kind }}">{% endif %}{% if e.kind == "decision" %}<path d="{{ e.x | diamond }}"/>{% elif e.kind == "hidden" %}<circle cx="{{ e.x | cx }}" cy="{{ e.kind | cy }}" r="4.5" stroke-dasharray="2.2 2"/>{% else %}<circle cx="{{ e.x | cx }}" cy="{{ e.kind | cy }}" r="4.5"/>{% endif %}{% if badge.published %}</a>{% else %}</g>{% endif %}
+{%- endfor %}
+      </svg>
+      <p class="sh-legend"><span>&#9670; decision</span><span>&#9679; commit</span><span>&#9675; AI session</span></p>
+    </section>
+{%- endif %}
+
+    <footer class="sh-foot">
+      <p>Generated by madelog from a hash-chained log · {{ chained_events }} event{{ chained_events | pluralize }} · root {{ badge.root | cut(len=12) }}</p>
+      <p>{% if badge.published %}&#10003; Verified by the server on {{ badge.published.received_at | day }} · {{ badge.published.url | linkname }}{% else %}Not yet verified by a server{% endif %}{% if project.delivered_url %} · Delivered: {{ project.delivered_url | linkname }}{% endif %}</p>
+    </footer>
+  </section>
 
 </main>
 <script>

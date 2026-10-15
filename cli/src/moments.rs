@@ -83,7 +83,15 @@ pub fn candidates(events: &[Event], patterns: &[PatternPayload]) -> Vec<Moment> 
 
 /// Three to five moments, or everything there is when there is less.
 pub fn pick(candidates: Vec<Moment>) -> Vec<Moment> {
-    candidates.into_iter().take(MAX_MOMENTS).collect()
+    // Two moments of the same kind that end on the same event tell the reader
+    // the same thing twice: many decisions written down together all point at
+    // the same next commit. The first one stands for the rest.
+    let mut seen = BTreeSet::new();
+    candidates
+        .into_iter()
+        .filter(|m| seen.insert((m.kind.as_str(), m.refs.last().cloned())))
+        .take(MAX_MOMENTS)
+        .collect()
 }
 
 /// The JSON a language model is shown.
@@ -630,6 +638,21 @@ mod tests {
         let all = moments_of(&log);
         assert!(all.len() > MAX_MOMENTS, "{} candidates", all.len());
         assert_eq!(pick(all).len(), MAX_MOMENTS);
+    }
+
+    #[test]
+    fn decisions_written_together_make_one_moment_not_five() {
+        let mut log = Log::start();
+        for i in 0..5 {
+            log.decision(10 + i, &format!("decision {i}"), false);
+        }
+        log.commit(100, "c0ffee0", "feat: queries", file_list(5, "db/queries"));
+        let picked = pick(moments_of(&log));
+        let same: Vec<_> = picked
+            .iter()
+            .filter(|m| m.kind == MomentKind::DirectionChange)
+            .collect();
+        assert_eq!(same.len(), 1, "{picked:#?}");
     }
 
     #[test]

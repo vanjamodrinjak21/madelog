@@ -18,7 +18,7 @@ Once a repo has `.madelog/`, madelog runs on its own. Do not ask before recordin
   ```sh
   madelog note "Server in Go, not Rust: three endpoints, one binary."
   ```
-  Then mention it in one line ("Recorded: …"). Record a decision once, when it is settled, not every option discussed.
+  Start with the verb and leave the person's name out ("Chose …", "Moved …", "Dropped …"): the note is already theirs, and it is printed as-is on the recruiter sheet. Keep it under 140 characters. Then mention it in one line ("Recorded: …"). Record a decision once, when it is settled, not every option discussed.
   Add `--private` automatically for anything about clients, money, people or credentials. Use `--at <sha>` when the decision belongs to an earlier commit.
 - **Not automatic:** `publish`, `unpublish`, `pro` and `init`. Like `git push`, these leave the machine or change setup, so they wait for the user.
 

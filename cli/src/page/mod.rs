@@ -176,6 +176,8 @@ pub struct PageContext {
     /// the chain and are counted in `chained_events`; nothing else on the
     /// page counts them.
     pub rewritten_commits: u64,
+    /// What the repository's manifests say it is built with (`stack::detect`).
+    pub stack: Vec<String>,
     pub badge: Badge,
 }
 
@@ -220,6 +222,7 @@ pub fn build_context(root: &Path, published: Option<Published>) -> Result<PageCo
         hidden_sessions,
         chained_events,
         rewritten_commits,
+        stack: crate::stack::detect(root),
         badge: Badge {
             root: chain_root,
             first_ts,

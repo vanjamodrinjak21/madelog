@@ -138,7 +138,27 @@ pub struct Verdict {
     /// `17 Sep – 21 Sep`, `3 Sep` for a one-day project, empty for an empty log.
     pub span: String,
     pub highlights: Vec<String>,
+    /// The printed sheet: the first decisions written down, in order, each
+    /// cut to one line. The earliest ones are the foundations.
+    pub sheet_decisions: Vec<SheetDecision>,
+    /// Public decisions beyond `sheet_decisions`.
+    pub more_decisions: usize,
+    /// One sentence on how AI was used, from recorded figures only.
+    pub ai_line: String,
 }
+
+/// One decision on the printed sheet, with the id of its record so the PDF
+/// can link to it on the published page.
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+pub struct SheetDecision {
+    pub id: String,
+    pub text: String,
+}
+
+/// Decisions on the printed sheet.
+const SHEET_DECISIONS: usize = 6;
+/// A decision on the sheet is cut to two printed lines.
+const SHEET_DECISION_MAX: usize = 140;
 
 /// A headline longer than this is cut at a word boundary.
 const HEADLINE_MAX: usize = 72;
@@ -148,6 +168,13 @@ const DECISION_MAX: usize = 96;
 impl Verdict {
     pub fn of(ctx: &PageContext) -> Verdict {
         let headline = headline(&ctx.project.name, &ctx.project.what);
+        let decisions: Vec<(&str, &str)> = ctx
+            .timeline
+            .iter()
+            .filter(|e| e.kind == "decision")
+            .map(|e| (e.id.as_str(), e.title.trim()))
+            .filter(|(_, t)| !t.is_empty())
+            .collect();
         // A full stop or a capital is not a cut; only lost words are.
         let full = ctx.project.what.trim().trim_end_matches(['.', ',']);
         Verdict {
@@ -158,8 +185,47 @@ impl Verdict {
                 ctx.project.last_ts.as_deref(),
             ),
             highlights: highlights(ctx),
+            sheet_decisions: decisions
+                .iter()
+                .take(SHEET_DECISIONS)
+                .map(|(id, text)| SheetDecision {
+                    id: id.to_string(),
+                    text: cut_words(text, SHEET_DECISION_MAX),
+                })
+                .collect(),
+            more_decisions: decisions.len().saturating_sub(SHEET_DECISIONS),
+            ai_line: ai_line(ctx),
         }
     }
+}
+
+/// How AI was used, said once, with nothing the log does not hold.
+fn ai_line(ctx: &PageContext) -> String {
+    let Some(ratio) = ctx.ratio else {
+        return "No AI session was recorded for this project.".to_string();
+    };
+    let tools = if ctx.project.tools.is_empty() {
+        "AI sessions".to_string()
+    } else {
+        ctx.project.tools.join(", ")
+    };
+    let total = ratio.covered_commits + ratio.uncovered_commits;
+    let mut line = format!(
+        "{tools} on {} of {} commit{}",
+        ratio.covered_commits,
+        total,
+        plural(total)
+    );
+    if ratio.ai_lines > 0 {
+        line.push_str(&format!(
+            "; {} of {} AI-written line{} reworked by hand",
+            num(ratio.human_reworked),
+            num(ratio.ai_lines),
+            plural(ratio.ai_lines)
+        ));
+    }
+    line.push('.');
+    line
 }
 
 /// The intent as a headline: without the project's own name in front, cut
@@ -690,6 +756,40 @@ mod tests {
             headline("madelog", "A page about madelog"),
             "A page about madelog"
         );
+    }
+
+    #[test]
+    fn the_sheet_lists_the_first_decisions_and_one_ai_line() {
+        use super::super::{Ratio, TimelineEntry};
+        let mut ctx = PageContext::default();
+        assert_eq!(
+            Verdict::of(&ctx).ai_line,
+            "No AI session was recorded for this project."
+        );
+        ctx.project.tools = vec!["Claude Code".into()];
+        ctx.ratio = Some(Ratio {
+            ai_lines: 701,
+            accepted_unchanged: 667,
+            human_reworked: 34,
+            human_lines: 17267,
+            covered_commits: 4,
+            uncovered_commits: 30,
+        });
+        ctx.timeline = (0..7)
+            .map(|i| TimelineEntry {
+                kind: "decision".into(),
+                title: format!("Decision number {i}"),
+                ..Default::default()
+            })
+            .collect();
+        let v = Verdict::of(&ctx);
+        assert_eq!(
+            v.ai_line,
+            "Claude Code on 4 of 34 commits; 34 of 701 AI-written lines reworked by hand."
+        );
+        assert_eq!(v.sheet_decisions.len(), 6);
+        assert_eq!(v.sheet_decisions[0].text, "Decision number 0");
+        assert_eq!(v.more_decisions, 1);
     }
 
     #[test]
